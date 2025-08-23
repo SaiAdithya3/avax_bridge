@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEVMWallet } from '../hooks/useEVMWallet';
-import { getFilteredOrders, getOrderStatusInfo, type UserOrder, type OrderStatus } from '../services/orderService';
+import { getFilteredOrders, getOrderStatusInfo, type OrderStatus } from '../services/orderService';
 import { useOrdersStore } from '../store/ordersStore';
 import { API_URLS } from '../constants/constants';
 import OrderDetails from './OrderDetails';
+import type { Order } from '../types/api';
 // Asset and chain logo URLs (not JSX)
 const ASSET_LOGOS: Record<string, string> = {
   wbtc: "https://garden.imgix.net/token-images/wbtc.svg",
@@ -45,6 +46,7 @@ function getAssetLogo(symbol: string) {
 }
 
 function getChainLogo(chainName: string) {
+  console.log("chainName", chainName)
   const url = CHAIN_LOGOS[chainName];
   if (url) {
     return (
@@ -75,7 +77,7 @@ const UserOrders: React.FC = () => {
     setError, 
     setStatusFilter 
   } = useOrdersStore();
-  const [filteredOrders, setFilteredOrders] = useState<UserOrder[]>([]);
+  const [filteredOrders, setFilteredOrders] = useState<(Order & {status: OrderStatus})[]>([]);
   const [isPolling, setIsPolling] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
@@ -122,22 +124,8 @@ const UserOrders: React.FC = () => {
           }
 
           return {
-            id: order.create_order?.create_id || order.source_swap?.swap_id || '',
+            ... order,
             status,
-            createdAt: order.created_at || new Date().toISOString(),
-            sourceAsset: order.source_swap?.asset || '',
-            destinationAsset: order.destination_swap?.asset || '',
-            sourceAmount: order.source_swap?.amount || '0',
-            destinationAmount: order.destination_swap?.amount || '0',
-            sourceChain: order.source_swap?.chain || '',
-            destinationChain: order.destination_swap?.chain || '',
-            sourceAddress: order.source_swap?.initiator || '',
-            destinationAddress: order.destination_swap?.initiator || '',
-            sourceTxHash: order.source_swap?.initiate_tx_hash || undefined,
-            destinationTxHash: order.destination_swap?.initiate_tx_hash || undefined,
-            secretHash: order.create_order?.secret_hash || '',
-            timelock: order.source_swap?.timelock || 0,
-            order, // Keep the full order object for reference
           };
         });
         
@@ -185,22 +173,8 @@ const UserOrders: React.FC = () => {
             }
 
             return {
-              id: order.create_order?.create_id || order.source_swap?.swap_id || '',
-              status,
-              createdAt: order.created_at || new Date().toISOString(),
-              sourceAsset: order.source_swap?.asset || '',
-              destinationAsset: order.destination_swap?.asset || '',
-              sourceAmount: order.source_swap?.amount || '0',
-              destinationAmount: order.destination_swap?.amount || '0',
-              sourceChain: order.source_swap?.chain || '',
-              destinationChain: order.destination_swap?.chain || '',
-              sourceAddress: order.source_swap?.initiator || '',
-              destinationAddress: order.destination_swap?.initiator || '',
-              sourceTxHash: order.source_swap?.initiate_tx_hash || undefined,
-              destinationTxHash: order.destination_swap?.initiate_tx_hash || undefined,
-              secretHash: order.create_order?.secret_hash || '',
-              timelock: order.source_swap?.timelock || 0,
-              order, // Keep the full order object for reference
+             ...order,
+             status,
             };
           });
           
@@ -362,16 +336,16 @@ const UserOrders: React.FC = () => {
           <div className="space-y-4">
             {filteredOrders.map((order, index) => {
               const statusInfo = getOrderStatusInfo(order.status);
-              const sourceSymbol = getAssetSymbol(order.sourceAsset);
-              const destinationSymbol = getAssetSymbol(order.destinationAsset);
-              const sourceChainName = getChainName(order.sourceAsset);
-              const destinationChainName = getChainName(order.destinationAsset);
+              const sourceSymbol = getAssetSymbol(order.source_swap.asset);
+              const destinationSymbol = getAssetSymbol(order.destination_swap.asset);
+              const sourceChainName = getChainName(order.source_swap.chain);
+              const destinationChainName = getChainName(order.destination_swap.chain);
 
               const isNonInitiated = order.status === 'created';
               
               return (
                 <motion.div
-                  key={order.id}
+                  key={order.create_order.create_id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.1 }}
@@ -380,7 +354,7 @@ const UserOrders: React.FC = () => {
                       ? 'hover:shadow-xl cursor-pointer hover:border-[#e84142]/30' 
                       : 'hover:shadow-xl'
                   }`}
-                  onClick={isNonInitiated ? () => setSelectedOrderId(order.id) : undefined}
+                  onClick={isNonInitiated ? () => setSelectedOrderId(order.create_order.create_id) : undefined}
                 >
                   {/* Order Header */}
                   <div className="flex items-center justify-between mb-4">
@@ -388,14 +362,14 @@ const UserOrders: React.FC = () => {
                       <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusInfo.color}`}>
                         {statusInfo.icon} {statusInfo.label}
                       </span>
-                      <span className="text-sm text-gray-500">#{order.id.slice(0, 8)}</span>
+                      <span className="text-sm text-gray-500">#{order.create_order.create_id.slice(0, 8)}</span>
                       {isNonInitiated && (
                         <span className="text-xs text-[#e84142] bg-[#e84142]/10 px-2 py-1 rounded-full">
                           Click to initiate
                         </span>
                       )}
                     </div>
-                    <span className="text-sm text-gray-500">{formatDate(order.createdAt)}</span>
+                    <span className="text-sm text-gray-500">{formatDate(order.created_at)}</span>
                   </div>
 
                   {/* Order Details */}
@@ -414,7 +388,7 @@ const UserOrders: React.FC = () => {
                           {getChainLogo(sourceChainName)}
                           <span className="text-sm text-gray-600">{sourceChainName}</span>
                         </div>
-                        <span className="font-semibold text-lg">{formatAmount(order.sourceAmount)}</span>
+                        <span className="font-semibold text-lg">{formatAmount(order.source_swap.amount)}</span>
                       </div>
                     </div>
 
@@ -432,38 +406,44 @@ const UserOrders: React.FC = () => {
                           {getChainLogo(destinationChainName)}
                           <span className="text-sm text-gray-600">{destinationChainName}</span>
                         </div>
-                        <span className="font-semibold text-lg">{formatAmount(order.destinationAmount)}</span>
+                        <span className="font-semibold text-lg">{formatAmount(order.destination_swap.amount)}</span>
                       </div>
                     </div>
                   </div>
 
                   {/* Transaction Hashes */}
-                  {(order.sourceTxHash || order.destinationTxHash) && (
+                  {(order.source_swap.initiate_tx_hash || order.destination_swap.initiate_tx_hash) && (
                     <div className="mt-4 pt-4 border-t border-gray-100">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {order.sourceTxHash && (
+                        {order.source_swap.initiate_tx_hash && (
                           <div>
                             <span className="text-sm font-medium text-gray-700">Source TX:</span>
                             <a
-                              href={`https://explorer.avax-test.network/tx/${order.sourceTxHash}`}
+                              href={`https://explorer.avax-test.network/tx/${order.source_swap.initiate_tx_hash}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="block text-sm text-blue-600 hover:text-blue-800 truncate"
                             >
-                              {order.sourceTxHash.slice(0, 10)}...{order.sourceTxHash.slice(-8)}
+                              { order.source_swap.initiate_tx_hash ? 
+                              order.source_swap.initiate_tx_hash.slice(0, 10) + "..." + order.source_swap.initiate_tx_hash.slice(-8) :
+                              "--"
+                              }
                             </a>
                           </div>
                         )}
-                        {order.destinationTxHash && (
+                        {order.destination_swap.initiate_tx_hash && (
                           <div>
                             <span className="text-sm font-medium text-gray-700">Destination TX:</span>
                             <a
-                              href={`https://explorer.avax-test.network/tx/${order.destinationTxHash}`}
+                              href={`https://explorer.avax-test.network/tx/${order.destination_swap.initiate_tx_hash}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="block text-sm text-blue-600 hover:text-blue-800 truncate"
                             >
-                              {order.destinationTxHash.slice(0, 10)}...{order.destinationTxHash.slice(-8)}
+                              { order.destination_swap.initiate_tx_hash ? 
+                              order.destination_swap.initiate_tx_hash.slice(0, 10) + "..." + order.destination_swap.initiate_tx_hash.slice(-8) :
+                              "--"
+                              }
                             </a>
                           </div>
                         )}
@@ -481,7 +461,7 @@ const UserOrders: React.FC = () => {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            setSelectedOrderId(order.id);
+                            setSelectedOrderId(order.create_order.create_id);
                           }}
                           className="px-4 py-2 bg-[#e84142] text-white text-sm font-medium rounded-lg hover:bg-[#e84142]/90 transition-colors"
                         >
