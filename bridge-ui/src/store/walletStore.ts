@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { LOCAL_STORAGE_KEYS } from '../constants/constants';
+import { DigestKey } from '../utils/digestKey';
 
 interface WalletState {
   evmWallet: {
@@ -13,8 +14,11 @@ interface WalletState {
     isConnected: boolean;
     network: string | null;
   };
+  digestKey: string | null;
   setEVMWallet: (address: string | null, chainId: number | null, isConnected: boolean) => void;
   setBTCWallet: (address: string | null, network: string | null, isConnected: boolean) => void;
+  setDigestKey: (key: string | null) => void;
+  getDigestKey: () => string;
   disconnectEVM: () => void;
   disconnectBTC: () => void;
   disconnectAll: () => void;
@@ -22,7 +26,7 @@ interface WalletState {
 
 export const useWalletStore = create<WalletState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       evmWallet: {
         address: null,
         isConnected: false,
@@ -33,6 +37,7 @@ export const useWalletStore = create<WalletState>()(
         isConnected: false,
         network: null,
       },
+      digestKey: null,
       setEVMWallet: (address, chainId, isConnected) =>
         set((state) => ({
           evmWallet: {
@@ -51,6 +56,19 @@ export const useWalletStore = create<WalletState>()(
             isConnected,
           },
         })),
+      setDigestKey: (key) =>
+        set(() => ({
+          digestKey: key,
+        })),
+      getDigestKey: () => {
+        const state = get();
+        if (state.digestKey) {
+          return state.digestKey;
+        }
+        const newKey = DigestKey.getDigestKey();
+        set({ digestKey: newKey });
+        return newKey;
+      },
       disconnectEVM: () =>
         set((state) => ({
           evmWallet: {
@@ -81,6 +99,7 @@ export const useWalletStore = create<WalletState>()(
             isConnected: false,
             network: null,
           },
+          digestKey: null,
         }),
     }),
     {

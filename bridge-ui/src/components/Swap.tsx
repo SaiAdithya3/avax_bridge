@@ -22,7 +22,6 @@ const Swap: React.FC = () => {
 
   const [isDropdownOpen, setIsDropdownOpen] = useState<'from' | 'to' | null>(null);
 
-
   useEffect(() => {
     fetchAssets();
   }, [fetchAssets]);
