@@ -12,7 +12,7 @@ use tracing::{error, info};
 mod primitives;
 mod config;
 mod services;
-// mod bitcoin_htlc;
+mod bitcoin_htlc;
 use primitives::{MatchedOrder, CreateOrder, Response};
 use config::AppConfig;
 use services::OrderService;

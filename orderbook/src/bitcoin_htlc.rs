@@ -1,13 +1,10 @@
+use anyhow::Result;
 use bitcoin::{
-    key::{Secp256k1, XOnlyPublicKey},
-    secp256k1::{PublicKey, SecretKey},
-    taproot::{TaprootBuilder, TaprootSpendInfo},
-    Address, KnownHrp, Network, ScriptBuf,
+    key::{Secp256k1, XOnlyPublicKey}, opcodes::all::{OP_CHECKSIG, OP_CHECKSIGADD, OP_CSV, OP_DROP, OP_EQUALVERIFY, OP_NUMEQUAL, OP_SHA256}, secp256k1::{PublicKey, SecretKey}, taproot::{TaprootBuilder, TaprootSpendInfo}, Address, KnownHrp, Network, ScriptBuf
 };
 use sha2::{Digest, Sha256};
 use alloy::hex;
 use once_cell::sync::Lazy;
-use eyre::Result;
 
 /// Garden internal key for Taproot HTLC addresses
 ///
@@ -77,9 +74,9 @@ pub fn get_htlc_address(htlc_params: &HTLCParams, network: Network) -> Result<Ad
 /// Constructs a Taproot tree with three spending conditions in a Huffman tree structure
 fn construct_taproot_spend_info(htlc_params: &HTLCParams) -> Result<TaprootSpendInfo> {
     // Create simple script leaves for now
-    let redeem_leaf = create_simple_redeem_script(&htlc_params.secret_hash, &htlc_params.redeemer_pubkey);
-    let refund_leaf = create_simple_refund_script(htlc_params.timelock, &htlc_params.initiator_pubkey);
-    let instant_refund_leaf = create_simple_instant_refund_script(&htlc_params.initiator_pubkey, &htlc_params.redeemer_pubkey);
+    let redeem_leaf = redeem_leaf(&htlc_params.secret_hash, &htlc_params.redeemer_pubkey);
+    let refund_leaf = refund_leaf(htlc_params.timelock as u64, &htlc_params.initiator_pubkey);
+    let instant_refund_leaf = instant_refund_leaf(&htlc_params.initiator_pubkey, &htlc_params.redeemer_pubkey);
 
     let secp = Secp256k1::new();
     let mut taproot_builder = TaprootBuilder::new();
@@ -87,49 +84,99 @@ fn construct_taproot_spend_info(htlc_params: &HTLCParams) -> Result<TaprootSpend
     // Add leaves to the Taproot tree with weights (1 for redeem, 2 for others)
     taproot_builder = taproot_builder
         .add_leaf(1, redeem_leaf)
-        .map_err(|e| format!("Unable to add redeem leaf to Taproot tree: {e}"))?
+        .map_err(|e| anyhow::anyhow!("Unable to add redeem leaf to Taproot tree: {e}"))?
         .add_leaf(2, refund_leaf)
-        .map_err(|e| format!("Unable to add refund leaf to Taproot tree: {e}"))?
+        .map_err(|e| anyhow::anyhow!("Unable to add refund leaf to Taproot tree: {e}"))?
         .add_leaf(2, instant_refund_leaf)
-        .map_err(|e| format!("Unable to add instant refund leaf to Taproot tree: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("Unable to add instant refund leaf to Taproot tree: {e}"))?;
 
     if !taproot_builder.is_finalizable() {
-        return Err("Taproot builder is not in a finalizable state".into());
+        return Err(anyhow::anyhow!("Taproot builder is not in a finalizable state"));
     }
     
     let internal_key = *GARDEN_NUMS;
 
     taproot_builder
         .finalize(&secp, internal_key)
-        .map_err(|_| "Failed to finalize Taproot spend info".into())
+        .map_err(|_| anyhow::anyhow!("Failed to finalize Taproot spend info"))
 }
 
-/// Creates a simple redeem script
-fn create_simple_redeem_script(secret_hash: &[u8; 32], redeemer_pubkey: &XOnlyPublicKey) -> ScriptBuf {
-    let mut script = ScriptBuf::new();
-    // Simple script: <redeemer_pubkey> OP_CHECKSIG
-    script.push_slice(redeemer_pubkey.as_inner());
-    script.push_opcode(bitcoin::blockdata::opcodes::all::OP_CHECKSIG);
-    script
+
+pub fn redeem_leaf(secret_hash: &[u8; 32], redeemer_pubkey: &XOnlyPublicKey) -> ScriptBuf {
+    bitcoin::script::Builder::new()
+        .push_opcode(OP_SHA256)
+        .push_slice(secret_hash)
+        .push_opcode(OP_EQUALVERIFY)
+        .push_slice(redeemer_pubkey.serialize())
+        .push_opcode(OP_CHECKSIG)
+        .into_script()
 }
 
-/// Creates a simple refund script
-fn create_simple_refund_script(timelock: u32, initiator_pubkey: &XOnlyPublicKey) -> ScriptBuf {
-    let mut script = ScriptBuf::new();
-    // Simple script: <initiator_pubkey> OP_CHECKSIG
-    script.push_slice(initiator_pubkey.as_inner());
-    script.push_opcode(bitcoin::blockdata::opcodes::all::OP_CHECKSIG);
-    script
+/// Creates a Bitcoin script that allows refunding after a timelock expires.
+///
+/// # Arguments
+/// * `timelock` - Number of blocks to lock the funds
+/// * `initiator_pubkey` - Public key of the initiator who can claim the refund
+///
+/// # Returns
+/// A script that enforces the timelock and verifies the initiator's signature
+pub fn refund_leaf(timelock: u64, initiator_pubkey: &XOnlyPublicKey) -> ScriptBuf {
+    bitcoin::script::Builder::new()
+        .push_int(timelock as i64)
+        .push_opcode(OP_CSV)
+        .push_opcode(OP_DROP)
+        .push_slice(&initiator_pubkey.serialize())
+        .push_opcode(OP_CHECKSIG)
+        .into_script()
 }
 
-/// Creates a simple instant refund script
-fn create_simple_instant_refund_script(initiator_pubkey: &XOnlyPublicKey, redeemer_pubkey: &XOnlyPublicKey) -> ScriptBuf {
-    let mut script = ScriptBuf::new();
-    // Simple script: <initiator_pubkey> OP_CHECKSIG <redeemer_pubkey> OP_CHECKSIG OP_ADD
-    script.push_slice(initiator_pubkey);
-    script.push_opcode(bitcoin::blockdata::opcodes::all::OP_CHECKSIG);
-    script.push_slice(redeemer_pubkey.as_inner());
-    script.push_opcode(bitcoin::blockdata::opcodes::all::OP_CHECKSIG);
-    script.push_opcode(bitcoin::blockdata::opcodes::all::OP_ADD);
-    script
+/// Creates a Bitcoin script that requires both initiator and redeemer signatures for instant refund.
+///
+/// # Arguments
+/// * `initiator_pubkey` - Public key of the initiator
+/// * `redeemer_pubkey` - Public key of the redeemer
+///
+/// # Returns
+/// A script that enforces both parties must sign to execute the refund
+pub fn instant_refund_leaf(
+    initiator_pubkey: &XOnlyPublicKey,
+    redeemer_pubkey: &XOnlyPublicKey,
+) -> ScriptBuf {
+    bitcoin::script::Builder::new()
+        .push_slice(&initiator_pubkey.serialize())
+        .push_opcode(OP_CHECKSIG)
+        .push_slice(&redeemer_pubkey.serialize())
+        .push_opcode(OP_CHECKSIGADD)
+        .push_int(2)
+        .push_opcode(OP_NUMEQUAL)
+        .into_script()
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_htlc_address() {
+        let secret_hash_str = "a4ddaad30ff45cfcc7fbae1d49b78ef717341b2b81fdd73410200788b9220da4";
+        let initiator_pubkey_str = "aa86614fda03b039bf077e7be6531159c3b157166259168908097b9983156919";
+        let redeemer_pubkey_str = "4ee866579971fd784cad175fb000d1a5245c1a5031ce46fef44469000ebc8819";
+
+
+        let secret_hash = hex::decode(secret_hash_str).unwrap().try_into().unwrap();
+        let initiator_pubkey = hex::decode(initiator_pubkey_str).unwrap();
+        let redeemer_pubkey = hex::decode(redeemer_pubkey_str).unwrap();
+
+
+        let htlc_params = HTLCParams {
+            secret_hash: secret_hash,
+            redeemer_pubkey: XOnlyPublicKey::from_slice(&redeemer_pubkey).unwrap(),
+            initiator_pubkey: XOnlyPublicKey::from_slice(&initiator_pubkey).unwrap(),
+            timelock: 12,
+        };
+
+        let address = get_htlc_address(&htlc_params, Network::Bitcoin).unwrap();
+        println!("HTLC address: {}", address);
+    }
 }
