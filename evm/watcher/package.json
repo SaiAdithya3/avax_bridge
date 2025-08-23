@@ -1,0 +1,28 @@
+{
+  "name": "evm-watcher",
+  "version": "1.0.0",
+  "description": "EVM blockchain event watcher for multiple chains",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "test": "jest"
+  },
+  "dependencies": {
+    "ethers": "^6.8.1",
+    "mongodb": "^6.3.0",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.8.0",
+    "typescript": "^5.2.2",
+    "ts-node": "^10.9.1",
+    "@types/jest": "^29.5.5",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1"
+  },
+  "keywords": ["evm", "blockchain", "watcher", "events", "mongodb"],
+  "author": "",
+  "license": "MIT"
+}
