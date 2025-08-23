@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { logger } from '../utils/logger';
 
-export type ContractType = 'erc20';
+export type ContractType = 'erc20' | 'atomic_swap';
 
 export class AbiLoader {
   private static abiCache: Map<ContractType, any[]> = new Map();
@@ -88,6 +88,8 @@ export class AbiLoader {
     switch (contractType) {
       case 'erc20':
         return ['Transfer', 'Approval'];
+      case 'atomic_swap':
+        return ['Initiated', 'Redeemed', 'Refunded'];
       default:
         return [];
     }
@@ -105,6 +107,6 @@ export class AbiLoader {
    * Validate if a contract type is supported
    */
   static isValidContractType(type: string): type is ContractType {
-    return ['erc20'].includes(type as ContractType);
+    return ['erc20', 'atomic_swap'].includes(type as ContractType);
   }
 }

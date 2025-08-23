@@ -23,24 +23,40 @@ export const WATCHER_CONFIG = {
 export const chainConfig: Chain[] = [
   {
     id: 'arbitrum_sepolia',
-    startBlock: 184658726,
+    startBlock: 186843718,
     rpcUrl: "https://arb-sepolia.g.alchemy.com/v2/GE3ckFWo2EhIEsrrYkc55",
     maxBlockSpan: 2000,
     contracts: [
       {
-        address: "0xC90Ad772eCc10a52a681ceDAE6EbBD3470A0c829", // USDC
+        address: "0xeffc83AC0Da8EC6C91CDe640d35eFB0D10c2E112", // USDC
+        type: "erc20"
+      },
+      {
+        address: "0x6B1c656ad724C246049EF586Fa35D217A8db13A0", // Atomic Swap
+        type: "atomic_swap"
+      },
+      {
+        address: "0x00c1Df9bf9C7ff7F3c2A8F9e9af72DA95b350D34", // WBTC
         type: "erc20"
       }
     ]
   },
   {
     id: 'avalanche_testnet',
-    startBlock: 12934577,
+    startBlock: 45130202,
     rpcUrl: "https://avax-fuji.g.alchemy.com/v2/GE3ckFWo2EhIEsrrYkc55",
     maxBlockSpan: 1000,
     contracts: [
       {
-        address: "0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63", // USDC
+        address: "0xeffc83AC0Da8EC6C91CDe640d35eFB0D10c2E112", // USDC
+        type: "erc20"
+      },
+      {
+        address: "0x6B1c656ad724C246049EF586Fa35D217A8db13A0", // Atomic Swap
+        type: "atomic_swap"
+      },
+      {
+        address: "0x00c1Df9bf9C7ff7F3c2A8F9e9af72DA95b350D34", // WBTC
         type: "erc20"
       }
     ]
