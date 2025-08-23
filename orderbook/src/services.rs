@@ -65,11 +65,6 @@ impl OrderService {
         // Set the generated create_id on the CreateOrder
         create_order.create_id = Some(create_id.clone());
 
-        tracing::info!("Source chain: {}", source_chain);
-        tracing::info!("Destination chain: {}", dest_chain);
-
-        tracing::info!("Create id: {}", create_id);
-        
         // Generate source swap ID based on chain type
         let source_swap_id = if Self::is_evm_chain(&source_chain_enum) {
             self.generate_evm_swap_id(
@@ -84,8 +79,6 @@ impl OrderService {
         } else {
             format!("swap_src_{}", Uuid::new_v4().to_string().split('-').next().unwrap_or("placeholder"))
         };
-
-        tracing::info!("Source swap id: {}", source_swap_id);
 
         let source_deposit_address = if Self::is_evm_chain(&source_chain_enum) {
             self.generate_deposit_address(
@@ -102,10 +95,8 @@ impl OrderService {
             None
         };
 
-        tracing::info!("Source deposit address: {:?}", &source_deposit_address);
-
         let source_swap = Swap {
-            id: None, // Will be set by MongoDB
+            _id: None, // Will be set by MongoDB
             created_at: now,
             swap_id: source_swap_id,
             chain: source_chain_enum,
@@ -144,7 +135,7 @@ impl OrderService {
         };
 
         let destination_swap = Swap {
-            id: None, // Will be set by MongoDB
+            _id: None, // Will be set by MongoDB
             created_at: now,
             swap_id: dest_swap_id,
             chain: dest_chain_enum,
@@ -169,7 +160,7 @@ impl OrderService {
         
         // Create the complete MatchedOrder
         let matched_order = MatchedOrder {
-            id: None, // Will be set by MongoDB
+            _id: None, // Will be set by MongoDB
             created_at: now,
             source_swap,
             destination_swap,
@@ -334,13 +325,7 @@ impl OrderService {
             let amount = U256::from_str(amount).map_err(|e| anyhow!("Invalid amount: {}", e))?;
             let secret_hash_bytes = FixedBytes::from_hex(secret_hash)?;
             let deposit_address = registry.getERC20Address(token_address, refund_address, redeemer_address, timelock, amount, secret_hash_bytes).call().await?;
-            // let call_data = registry.getERC20Address(token_address, refund_address, redeemer_address, timelock, amount, secret_hash_bytes).calldata().clone();
-            // dbg!(&call_data);
-            let res = deposit_address.to_string();
-            dbg!(&res);
-            Ok(Some(res))
-
-
+            Ok(Some(deposit_address.to_string()))
         // }
     }
 }

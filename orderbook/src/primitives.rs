@@ -1,12 +1,23 @@
-use serde::{Deserialize, Serialize, Deserializer};
+use serde::{Deserialize, Serialize, Serializer, Deserializer};
 use mongodb::bson::{DateTime, oid::ObjectId};
+use std::fmt;
+
+
+fn serialize_datetime<S>(datetime: &DateTime, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    // Convert MongoDB DateTime to ISO 8601 string
+    let chrono_dt = chrono::DateTime::from_timestamp_millis(datetime.timestamp_millis())
+        .ok_or_else(|| serde::ser::Error::custom("Invalid timestamp"))?;
+    serializer.serialize_str(&chrono_dt.to_rfc3339())
+}
 
 fn deserialize_datetime<'de, D>(deserializer: D) -> Result<DateTime, D::Error>
 where
     D: Deserializer<'de>,
 {
     use serde::de::{Error, Visitor};
-    use std::fmt;
     
     struct DateTimeVisitor;
     
@@ -29,18 +40,16 @@ where
             if let Ok(datetime) = chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S%.fZ") {
                 return Ok(DateTime::from_millis(datetime.and_utc().timestamp_millis()));
             }
-            // Try to parse just date
-            if let Ok(datetime) = chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S") {
-                return Ok(DateTime::from_millis(datetime.and_utc().timestamp_millis()));
-            }
-            Err(Error::custom(format!("Failed to parse date: {}", value)))
+            Err(Error::custom(format!("Invalid datetime format: {}", value)))
         }
         
-        fn visit_string<E>(self, value: String) -> Result<DateTime, E>
+        fn visit_map<A>(self, map: A) -> Result<DateTime, A::Error>
         where
-            E: Error,
+            A: serde::de::MapAccess<'de>,
         {
-            self.visit_str(&value)
+            // Handle BSON DateTime format like {"$date": {"$numberLong": "1755966485601"}}
+            let datetime: DateTime = Deserialize::deserialize(serde::de::value::MapAccessDeserializer::new(map))?;
+            Ok(datetime)
         }
     }
     
@@ -49,8 +58,8 @@ where
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateOrder {
-    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
-    pub id: Option<ObjectId>,
+    #[serde(rename = "_id", skip_serializing)]
+    pub _id: Option<ObjectId>,
     pub from: String, // Format: "chain:asset" e.g., "bitcoin_testnet:btc"
     pub to: String,   // Format: "chain:asset" e.g., "avalanche_testnet:avax"
     pub source_amount: String,
@@ -58,6 +67,7 @@ pub struct CreateOrder {
     pub initiator_source_address: String,
     pub initiator_destination_address: String,
     pub secret_hash: String,
+    pub nonce : String,
     pub bitcoin_optional_recipient: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub create_id: Option<String>, // Generated automatically by the service
@@ -65,9 +75,9 @@ pub struct CreateOrder {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MatchedOrder {
-    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
-    pub id: Option<ObjectId>,
-    #[serde(deserialize_with = "deserialize_datetime")]
+    #[serde(rename = "_id", skip_serializing)]
+    pub _id: Option<ObjectId>,
+    #[serde(serialize_with = "serialize_datetime", deserialize_with = "deserialize_datetime")]
     pub created_at: DateTime,
     pub source_swap: Swap,
     pub destination_swap: Swap,
@@ -76,9 +86,9 @@ pub struct MatchedOrder {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Swap {
-    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
-    pub id: Option<ObjectId>,
-    #[serde(deserialize_with = "deserialize_datetime")]
+    #[serde(rename = "_id", skip_serializing)]
+    pub _id: Option<ObjectId>,
+    #[serde(serialize_with = "serialize_datetime", deserialize_with = "deserialize_datetime")]
     pub created_at: DateTime,
     pub swap_id: String,
     pub chain: Chain,
@@ -153,9 +163,4 @@ impl<T> Response<T> {
             error: Some(error),
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateOrderResult {
-    pub create_id: String,
 }

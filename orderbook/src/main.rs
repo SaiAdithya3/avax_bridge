@@ -1,7 +1,7 @@
 use axum::{
     routing::{get, post},
     Router,
-    extract::State,
+    extract::{State, Path},
     Json,
 };
 use std::{collections::HashMap, net::SocketAddr, str::FromStr};
@@ -12,7 +12,7 @@ mod primitives;
 mod config;
 mod services;
 // mod bitcoin_htlc;
-use primitives::{MatchedOrder, CreateOrder, Response, CreateOrderResult};
+use primitives::{MatchedOrder, CreateOrder, Response};
 use config::AppConfig;
 use services::OrderService;
 use alloy::{
@@ -42,7 +42,7 @@ async fn health_check(State(_state): State<AppState>) -> &'static str {
 async fn create_order(
     State(state): State<AppState>,
     Json(create_order): Json<CreateOrder>,
-) -> Result<Json<Response<CreateOrderResult>>, (axum::http::StatusCode, Json<Response<()>>)> {    
+) -> Result<Json<Response<String>>, (axum::http::StatusCode, Json<Response<()>>)> {    
             let matched_order = match state.order_service.get_matched_order(create_order).await {
         Ok(order) => order,
         Err(e) => {
@@ -60,9 +60,7 @@ async fn create_order(
         Ok(_result) => {
             let create_id = matched_order.create_order.create_id.clone().unwrap_or_else(|| "unknown".to_string());
             info!("Order created: {:?}", create_id);
-            Ok(Json(Response::success(CreateOrderResult {
-                create_id,
-            })))
+            Ok(Json(Response::success(create_id)))
         }
         Err(e) => {
             error!("Failed to insert order into database: {}", e);
@@ -74,6 +72,35 @@ async fn create_order(
     }
 }
 
+async fn get_order(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Response<MatchedOrder>>, (axum::http::StatusCode, Json<Response<()>>)> {
+    let orders_collection = state.db.collection::<MatchedOrder>("orders");
+    
+    let filter = doc! { "create_order.create_id": &id };
+    
+    match orders_collection.find_one(filter, None).await {
+        Ok(Some(matched_order)) => {
+            info!("Order found: {:?}", id);
+            Ok(Json(Response::success(matched_order)))
+        }
+        Ok(None) => {
+            info!("Order not found: {:?}", id);
+            Err((
+                axum::http::StatusCode::NOT_FOUND,
+                Json(Response::<()>::error("Order not found".to_string()))
+            ))
+        }
+        Err(e) => {
+            error!("Failed to query database: {}", e);
+            Err((
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(Response::<()>::error("Internal server error".to_string()))
+            ))
+        }
+    }
+}
 
 async fn setup_mongodb() -> Result<Database> {
     // Connect to MongoDB (default: localhost:27017)
@@ -208,6 +235,7 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/health", get(health_check))
         .route("/orders", post(create_order))
+        .route("/orders/:id", get(get_order))
         .with_state(state);
 
     // Run it
