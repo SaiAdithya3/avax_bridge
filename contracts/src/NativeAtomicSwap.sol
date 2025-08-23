@@ -1,21 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-
-/**
- * @author  Garden Finance
- * @title   ATOMIC_SWAP smart contract for atomic swaps
- * @notice  Any signer can create an order to serve as one of either halves of a cross chain
- *          atomic swap for any user with respective valid signatures.
- * @dev     The contract can be used to create an order to serve as the the commitment for two
- *          types of users :
- *          Initiator functions: 1. initiate
- *                               2. initiateOnBehalf
- *                               3. refund
- *                               4. instantRefund
- *
- *          Redeemer function:   1. redeem
- */
 contract NativeATOMIC_SWAP {
     struct Order {
         address payable initiator;
@@ -63,7 +48,6 @@ contract NativeATOMIC_SWAP {
     //0x5e1dd837
     error NativeATOMIC_SWAP__SameFunderAndRedeemer();
 
-
     modifier safeParams(address initiator, address redeemer, uint256 timelock, uint256 amount) {
         require(redeemer != address(0), NativeATOMIC_SWAP__ZeroAddressRedeemer());
         require(initiator != redeemer, NativeATOMIC_SWAP__SameInitiatorAndRedeemer());
@@ -72,7 +56,6 @@ contract NativeATOMIC_SWAP {
         require(msg.value == amount, NativeATOMIC_SWAP__IncorrectFundsRecieved());
         _;
     }
-
 
     function initiate(address payable redeemer, uint256 timelock, uint256 amount, bytes32 secretHash)
         external
@@ -93,7 +76,6 @@ contract NativeATOMIC_SWAP {
         require(initiator != address(0), NativeATOMIC_SWAP__ZeroAddressInitiator());
         _initiate(initiator, redeemer, timelock, secretHash);
     }
-
 
     function redeem(bytes32 orderID, bytes calldata secret) external {
         Order storage order = orders[orderID];
@@ -121,7 +103,7 @@ contract NativeATOMIC_SWAP {
 
         orderRedeemer.transfer(amount);
     }
-    
+
     function refund(bytes32 orderID) external {
         Order storage order = orders[orderID];
 
@@ -139,7 +121,8 @@ contract NativeATOMIC_SWAP {
     }
 
     function _initiate(address payable initiator_, address payable redeemer_, uint256 timelock_, bytes32 secretHash_)
-        internal returns (bytes32 orderID)
+        internal
+        returns (bytes32 orderID)
     {
         orderID =
             sha256(abi.encode(block.chainid, secretHash_, initiator_, redeemer_, timelock_, msg.value, address(this)));
@@ -157,5 +140,4 @@ contract NativeATOMIC_SWAP {
 
         emit Initiated(orderID, secretHash_, msg.value);
     }
-
 }

@@ -36,12 +36,12 @@ contract UniqueDepositAddress is Initializable {
     }
 
     function recover(address _token) public {
-        (, , address refundAddress,,,,) = getArgs();
+        (,, address refundAddress,,,,) = getArgs();
         IERC20(_token).safeTransfer(refundAddress, IERC20(_token).balanceOf(address(this)));
     }
 
     function recover() public {
-        (, , address _refundAddress,,,,) = getArgs();
+        (,, address _refundAddress,,,,) = getArgs();
         payable(_refundAddress).transfer(address(this).balance);
     }
 }
@@ -53,7 +53,6 @@ contract NativeUniqueDepositAddress is Initializable {
     constructor() {
         _disableInitializers();
     }
-
 
     function initialize() public initializer {
         (
@@ -79,10 +78,6 @@ contract NativeUniqueDepositAddress is Initializable {
         IERC20(_token).safeTransfer(refundAddress, IERC20(_token).balanceOf(address(this)));
     }
 
-    /**
-     * @notice  Allows the owner to recover any eth accidentally sent to this contract
-     * @dev     Always sends the funds to the owner (refundAddress) of the contract
-     */
     function recover() public {
         (, address _refundAddress,,,,) = getArgs();
         payable(_refundAddress).transfer(address(this).balance);
