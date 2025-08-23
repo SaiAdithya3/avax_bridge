@@ -12,8 +12,8 @@
           "token_address": "primary"
         }
       ],
-      "source_timelock": 144,
-      "destination_timelock": 12,
+      "source_timelock": 5,
+      "destination_timelock": 2,
       "chain_id": "1"
     },
     "avalanche_testnet": {
@@ -25,7 +25,7 @@
         {
           "id": "usdc",
           "atomic_swap_address": "0x6B1c656ad724C246049EF586Fa35D217A8db13A0",
-          "token_address": "0xeffc83AC0Da8EC6C91CDe640d35eFB0D10c2E112"
+          "token_address": "0x419540C835D55aa023376970AbC82ce18a650f21"
         }
       ],
       "source_timelock": 48539,
@@ -41,7 +41,7 @@
         {
           "id": "usdc",
           "atomic_swap_address": "0x6B1c656ad724C246049EF586Fa35D217A8db13A0",
-          "token_address": "0xeffc83AC0Da8EC6C91CDe640d35eFB0D10c2E112"
+          "token_address": "0x419540C835D55aa023376970AbC82ce18a650f21"
         }
       ],
       "source_timelock": 36000,
