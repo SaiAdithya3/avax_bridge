@@ -1,35 +1,26 @@
-import { DatabaseService } from './services/database';
 import { EventHandlerService } from './services/eventHandler';
 import { WatcherManager } from './services/watcherManager';
-import { CHAIN_CONFIGS, WATCHER_CONFIG, addContractToChain } from '../config';
+import { chainConfig, WATCHER_CONFIG, addContractToChain } from '../config';
 import { logger } from './utils/logger';
 
-class EVMWatcher {
-  private database: DatabaseService;
-  private eventHandler: EventHandlerService;
+export class EVMWatcher {
   private watcherManager: WatcherManager;
-  private isShuttingDown: boolean = false;
+  private eventHandler: EventHandlerService;
 
   constructor() {
-    // Initialize services using centralized config
-    this.database = new DatabaseService();
     this.eventHandler = new EventHandlerService();
-    this.watcherManager = new WatcherManager(CHAIN_CONFIGS, this.database, this.eventHandler, WATCHER_CONFIG);
+    this.watcherManager = new WatcherManager(
+      chainConfig,
+      this.eventHandler,
+      WATCHER_CONFIG
+    );
 
     // Setup graceful shutdown
-    this.setupGracefulShutdown();
-  }
-
-  private setupGracefulShutdown(): void {
     const shutdown = async (signal: string) => {
-      if (this.isShuttingDown) return;
-      
-      this.isShuttingDown = true;
       logger.info(`Received ${signal}, shutting down gracefully...`);
       
       try {
-        await this.watcherManager.stop();
-        await this.database.disconnect();
+        await this.stop();
         logger.info('Graceful shutdown completed');
         process.exit(0);
       } catch (error) {
@@ -38,23 +29,26 @@ class EVMWatcher {
       }
     };
 
+    // Handle different shutdown signals
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT', () => shutdown('SIGINT'));
     process.on('SIGUSR2', () => shutdown('SIGUSR2')); // For nodemon
+    
+    // Also handle uncaught exceptions
+    process.on('uncaughtException', (error) => {
+      logger.error('Uncaught Exception:', error);
+      shutdown('uncaughtException');
+    });
+    
+    process.on('unhandledRejection', (reason, promise) => {
+      logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+      shutdown('unhandledRejection');
+    });
   }
 
   async start(): Promise<void> {
     try {
       logger.info('Starting EVM Watcher...');
-      
-      // Connect to database
-      await this.database.connect();
-      
-      // Check database health
-      const isHealthy = await this.database.isHealthy();
-      if (!isHealthy) {
-        throw new Error('Database health check failed');
-      }
       
       // Start watcher manager
       await this.watcherManager.start();
@@ -150,9 +144,6 @@ async function main() {
     process.exit(1);
   }
 }
-
-// Export for use as module
-export { EVMWatcher };
 
 // Run if this is the main module
 if (require.main === module) {

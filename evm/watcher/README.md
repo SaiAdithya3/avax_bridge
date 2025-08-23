@@ -41,27 +41,52 @@ export const DB_CONFIG = {
 };
 ```
 
-### **2. Contract Type System**
+### **2. Watcher Configuration**
 ```typescript
-// Contract configuration with type-based ABI loading
-export const CONTRACTS: { [chainId: string]: ContractConfig[] } = {
-  ethereum: [
-    {
-      address: "0xA0b86a33E6441b8c4C1C1b8B4b2b8B4b2b8B4b2b",
-      name: "USDC Token",
-      type: "erc20", // ABI automatically loaded from /abi/erc20.json
-      startBlock: 15000000,
-      events: ["Transfer", "Approval"]
-    }
-  ]
+export const WATCHER_CONFIG = {
+  pollInterval: parseInt(process.env.POLL_INTERVAL || '1000'),
+  maxRetries: parseInt(process.env.MAX_RETRIES || '5'),
+  retryDelay: parseInt(process.env.RETRY_DELAY || '5000'),
+  batchSize: parseInt(process.env.BATCH_SIZE || '10')
 };
 ```
 
-### **3. Supported Contract Types**
+### **3. Simplified Chain Configuration**
+```typescript
+export const chainConfig: Chain[] = [
+  {
+    id: 'ethereum',
+    startBlock: 15000000,
+    rpcUrl: process.env.ETHEREUM_RPC_URL || 'https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY',
+    contracts: [
+      {
+        address: "0xA0b86a33E6441b8c4C1C1b8B4b2b8B4b2b8B4b2b", // USDC
+        type: "erc20"
+      }
+    ]
+  }
+];
+```
+
+### **4. Contract Configuration**
+```typescript
+interface ContractConfig {
+  address: string;    // Contract address
+  type: 'erc20';      // Contract type (ABI loaded automatically)
+}
+```
+
+**No more complex configuration!** Just specify:
+- **Chain ID** and **start block**
+- **RPC URL** for the chain
+- **Contract address** and **type**
+- **Events are automatically determined** based on contract type
+
+### **5. Supported Contract Types**
 - **`erc20`**: Standard ERC20 tokens
 - *More types coming soon...*
 
-### **4. ABI Management**
+### **6. ABI Management**
 ABIs are stored in `/abi/` directory:
 - `erc20.json` - Complete ERC20 token ABI
 - ABIs are automatically loaded based on contract type
@@ -80,14 +105,17 @@ Edit `config.ts` and add your ERC20 tokens:
 
 ```typescript
 // Add your ERC20 contract to ethereum
-CONTRACTS.ethereum.push({
+chainConfig[0].contracts.push({
   address: "0xYourContractAddress",
-  name: "Your Token Name",
-  type: "erc20", // Only ERC20 supported currently
-  startBlock: 18000000, // Start from block 18M
-  events: ["Transfer", "Approval"] // Standard ERC20 events
+  type: "erc20" // ABI loaded automatically, events determined by type
 });
 ```
+
+**That's it!** No need to specify:
+- ❌ ABI arrays
+- ❌ Event lists  
+- ❌ Contract names
+- ❌ Start blocks per contract
 
 ### **3. Set Environment Variables (Optional)**
 ```bash

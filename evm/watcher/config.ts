@@ -1,8 +1,8 @@
-import { ChainConfig, ContractConfig } from './src/types';
+import { Chain } from './src/types';
 
 // Database Configuration
 export const DB_CONFIG = {
-  uri: process.env.MONGODB_URI || 'mongodb://localhost:27017',
+  uri: "mongodb+srv://gsnr1925:4ccbmCombV2Zp1tC@cluster0.owm6ysq.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0",
   name: process.env.MONGODB_DB || 'evm_watcher',
   options: {
     maxPoolSize: 10,
@@ -19,129 +19,62 @@ export const WATCHER_CONFIG = {
   batchSize: parseInt(process.env.BATCH_SIZE || '10')
 };
 
-// RPC Endpoints
-export const RPC_ENDPOINTS = {
-  ethereum: process.env.ETHEREUM_RPC_URL || 'https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY',
-  avalanche: process.env.AVALANCHE_RPC_URL || 'https://api.avax.network/ext/bc/C/rpc',
-  polygon: process.env.POLYGON_RPC_URL || 'https://polygon-rpc.com',
-  bsc: process.env.BSC_RPC_URL || 'https://bsc-dataseed.binance.org',
-  arbitrum: process.env.ARBITRUM_RPC_URL || 'https://arb1.arbitrum.io/rpc',
-  optimism: process.env.OPTIMISM_RPC_URL || 'https://mainnet.optimism.io'
-};
-
-// Contract Configurations
-export const CONTRACTS: { [chainId: string]: ContractConfig[] } = {
-  ethereum: [
-    // Example: USDC Token (ERC20)
-    {
-      address: "0xA0b86a33E6441b8c4C1C1b8B4b2b8B4b2b8B4b2b",
-      name: "USDC Token",
-      type: "erc20",
-      startBlock: 15000000,
-      events: ["Transfer", "Approval"]
-    },
-    // Example: USDT Token (ERC20)
-    {
-      address: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-      name: "USDT Token",
-      type: "erc20",
-      startBlock: 15000000,
-      events: ["Transfer", "Approval"]
-    }
-  ]
-};
-
-// Chain Configurations
-export const CHAIN_CONFIGS: ChainConfig[] = [
+// Chain Configuration
+export const chainConfig: Chain[] = [
   {
-    id: 'ethereum',
-    name: 'Ethereum Mainnet',
-    rpcUrl: RPC_ENDPOINTS.ethereum,
-    chainId: 1,
-    blockTime: 12,
-    confirmations: 12,
-    contracts: CONTRACTS.ethereum || []
+    id: 'arbitrum_sepolia',
+    startBlock: 184658726,
+    rpcUrl: "https://arb-sepolia.g.alchemy.com/v2/GE3ckFWo2EhIEsrrYkc55",
+    maxBlockSpan: 2000,
+    contracts: [
+      {
+        address: "0xC90Ad772eCc10a52a681ceDAE6EbBD3470A0c829", // USDC
+        type: "erc20"
+      }
+    ]
   },
   {
-    id: 'avalanche',
-    name: 'Avalanche C-Chain',
-    rpcUrl: RPC_ENDPOINTS.avalanche,
-    chainId: 43114,
-    blockTime: 2,
-    confirmations: 20,
-    contracts: CONTRACTS.avalanche || []
-  },
-  {
-    id: 'polygon',
-    name: 'Polygon',
-    rpcUrl: RPC_ENDPOINTS.polygon,
-    chainId: 137,
-    blockTime: 2,
-    confirmations: 200,
-    contracts: CONTRACTS.polygon || []
-  },
-  {
-    id: 'bsc',
-    name: 'Binance Smart Chain',
-    rpcUrl: RPC_ENDPOINTS.bsc,
-    chainId: 56,
-    blockTime: 3,
-    confirmations: 15,
-    contracts: CONTRACTS.bsc || []
-  },
-  {
-    id: 'arbitrum',
-    name: 'Arbitrum One',
-    rpcUrl: RPC_ENDPOINTS.arbitrum,
-    chainId: 42161,
-    blockTime: 1,
-    confirmations: 10,
-    contracts: CONTRACTS.arbitrum || []
-  },
-  {
-    id: 'optimism',
-    name: 'Optimism',
-    rpcUrl: RPC_ENDPOINTS.optimism,
-    chainId: 10,
-    blockTime: 2,
-    confirmations: 10,
-    contracts: CONTRACTS.optimism || []
+    id: 'avalanche_testnet',
+    startBlock: 32062545,
+    rpcUrl: "https://avax-fuji.g.alchemy.com/v2/GE3ckFWo2EhIEsrrYkc55",
+    maxBlockSpan: 1000,
+    contracts: [
+      {
+        address: "0x5425890298aed601595a70AB815c96711a31Bc65", // USDC
+        type: "erc20"
+      }
+    ]
   }
 ];
 
 // Helper functions
-export const getChainConfig = (chainId: string): ChainConfig | undefined => {
-  return CHAIN_CONFIGS.find(chain => chain.id === chainId);
+export const getChainConfig = (chainId: string): Chain | undefined => {
+  return chainConfig.find(chain => chain.id === chainId);
 };
 
-export const addContractToChain = (chainId: string, contractConfig: ContractConfig): void => {
-  const chain = CHAIN_CONFIGS.find(c => c.id === chainId);
+export const addContractToChain = (chainId: string, contractConfig: any): void => {
+  const chain = chainConfig.find(c => c.id === chainId);
   if (chain) {
     chain.contracts.push(contractConfig);
   }
-  
-  // Also update the CONTRACTS object
-  if (!CONTRACTS[chainId]) {
-    CONTRACTS[chainId] = [];
-  }
-  CONTRACTS[chainId].push(contractConfig);
 };
 
 export const removeContractFromChain = (chainId: string, contractAddress: string): void => {
-  const chain = CHAIN_CONFIGS.find(c => c.id === chainId);
+  const chain = chainConfig.find(c => c.id === chainId);
   if (chain) {
     chain.contracts = chain.contracts.filter(c => c.address !== contractAddress);
   }
-  
-  if (CONTRACTS[chainId]) {
-    CONTRACTS[chainId] = CONTRACTS[chainId].filter(c => c.address !== contractAddress);
-  }
 };
 
-export const getContractsForChain = (chainId: string): ContractConfig[] => {
-  return CONTRACTS[chainId] || [];
+export const getContractsForChain = (chainId: string): any[] => {
+  const chain = chainConfig.find(c => c.id === chainId);
+  return chain ? chain.contracts : [];
 };
 
-export const getAllContracts = (): { [chainId: string]: ContractConfig[] } => {
-  return CONTRACTS;
+export const getAllContracts = (): { [chainId: string]: any[] } => {
+  const result: { [chainId: string]: any[] } = {};
+  chainConfig.forEach(chain => {
+    result[chain.id] = chain.contracts;
+  });
+  return result;
 };
