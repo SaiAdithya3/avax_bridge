@@ -6,7 +6,6 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ATOMIC_SWAP} from "../src/AtomicSwap.sol";
 import {ATOMIC_SWAPRegistry} from "../src/AtomicSwapRegistry.sol";
 
-
 contract InitiatesTest is Script {
     function run() external {
         // uint256 pk = vm.envUint("PRIVATE_KEY");
@@ -18,8 +17,14 @@ contract InitiatesTest is Script {
 
         usdc.approve(address(atomicSwap), type(uint256).max);
 
-        for (uint i = 0; i < 10; i++) {
-            atomicSwap.initiate(address(0xeffc83AC0Da8EC6C91CDe640d35eFB0D10c2E112), address(123), 100, 1000, sha256(abi.encodePacked((i + 1) * 100)));
+        for (uint256 i = 0; i < 10; i++) {
+            atomicSwap.initiate(
+                address(0xeffc83AC0Da8EC6C91CDe640d35eFB0D10c2E112),
+                address(123),
+                100,
+                1000,
+                sha256(abi.encodePacked((i + 1) * 100))
+            );
         }
 
         vm.stopBroadcast();
@@ -35,13 +40,16 @@ contract InitiateViaRegistry is Script {
         IERC20 usdc = IERC20(0xeffc83AC0Da8EC6C91CDe640d35eFB0D10c2E112);
         ATOMIC_SWAPRegistry atomicSwapRegistry = ATOMIC_SWAPRegistry(0x66F20a5Fbf43e4B36Ac9e2D9DE33E8B8cAfD3ab7);
 
-
-        for (uint i = 0; i < 10; i++) {
-            address UDA = atomicSwapRegistry.getERC20Address(address(usdc), address(123), address(231), 100, 1000, sha256(abi.encodePacked((i + 1) * 1000)));
+        for (uint256 i = 0; i < 10; i++) {
+            address UDA = atomicSwapRegistry.getERC20Address(
+                address(usdc), address(123), address(231), 100, 1000, sha256(abi.encodePacked((i + 1) * 1000))
+            );
 
             usdc.transfer(UDA, 1000);
 
-            atomicSwapRegistry.createERC20SwapAddress(address(usdc), address(123), address(231), 100, 1000, sha256(abi.encodePacked((i + 1) * 1000)));
+            atomicSwapRegistry.createERC20SwapAddress(
+                address(usdc), address(123), address(231), 100, 1000, sha256(abi.encodePacked((i + 1) * 1000))
+            );
         }
 
         vm.stopBroadcast();
@@ -62,7 +70,20 @@ contract FullFlowTest is Script {
         // Interact with the ATOMIC_SWAP contract
         atomicSwap.initiate(address(wbtc), redeemerAddress, 100, 1000, sha256(abi.encodePacked("secret11")));
 
-        atomicSwap.redeem(sha256(abi.encode(block.chainid,sha256(abi.encodePacked("secret11")),msg.sender,redeemerAddress,100,1000,address(atomicSwap))),abi.encodePacked("secret11"));
+        atomicSwap.redeem(
+            sha256(
+                abi.encode(
+                    block.chainid,
+                    sha256(abi.encodePacked("secret11")),
+                    msg.sender,
+                    redeemerAddress,
+                    100,
+                    1000,
+                    address(atomicSwap)
+                )
+            ),
+            abi.encodePacked("secret11")
+        );
 
         vm.stopBroadcast();
     }

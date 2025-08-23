@@ -5,7 +5,6 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
-
 contract ATOMIC_SWAP is EIP712 {
     using SafeERC20 for IERC20;
 
@@ -26,7 +25,6 @@ contract ATOMIC_SWAP is EIP712 {
 
     bytes32 private constant _INITIATE_TYPEHASH =
         keccak256("Initiate(address redeemer,uint256 timelock,uint256 amount,bytes32 secretHash)");
-
 
     event Initiated(bytes32 indexed orderID, bytes32 indexed secretHash, uint256 indexed amount);
     event Redeemed(bytes32 indexed orderID, bytes32 indexed secretHash, bytes secret);
@@ -76,11 +74,14 @@ contract ATOMIC_SWAP is EIP712 {
         _initiate(token, msg.sender, msg.sender, redeemer, timelock, amount, secretHash);
     }
 
-
-    function initiateOnBehalf(address token, address initiator, address redeemer, uint256 timelock, uint256 amount, bytes32 secretHash)
-        external
-        safeParams(initiator, redeemer, timelock, amount)
-    {
+    function initiateOnBehalf(
+        address token,
+        address initiator,
+        address redeemer,
+        uint256 timelock,
+        uint256 amount,
+        bytes32 secretHash
+    ) external safeParams(initiator, redeemer, timelock, amount) {
         require(msg.sender != redeemer, ATOMIC_SWAP__SameFunderAndRedeemer());
         require(initiator != address(0), ATOMIC_SWAP__ZeroAddressInitiator());
         _initiate(token, msg.sender, initiator, redeemer, timelock, amount, secretHash);
@@ -96,8 +97,10 @@ contract ATOMIC_SWAP is EIP712 {
         bytes calldata signature
     ) external safeParams(initiator, redeemer, timelock, amount) {
         bytes32 hash =
-            _hashTypedDataV4(keccak256(abi.encode(_INITIATE_TYPEHASH, token , redeemer, timelock, amount, secretHash)));
-        require(SignatureChecker.isValidSignatureNow(initiator, hash, signature), ATOMIC_SWAP__InvalidInitiatorSignature());
+            _hashTypedDataV4(keccak256(abi.encode(_INITIATE_TYPEHASH, token, redeemer, timelock, amount, secretHash)));
+        require(
+            SignatureChecker.isValidSignatureNow(initiator, hash, signature), ATOMIC_SWAP__InvalidInitiatorSignature()
+        );
         _initiate(token, initiator, initiator, redeemer, timelock, amount, secretHash);
     }
 
@@ -170,5 +173,4 @@ contract ATOMIC_SWAP is EIP712 {
 
         IERC20(token_).safeTransferFrom(funder_, address(this), amount_);
     }
-
 }

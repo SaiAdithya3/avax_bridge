@@ -9,7 +9,6 @@ import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-
 contract ATOMIC_SWAPRegistry is Ownable {
     using Clones for address;
     using Address for address;
@@ -82,10 +81,8 @@ contract ATOMIC_SWAPRegistry is Ownable {
     ) external returns (address) {
         require(ATOMIC_SWAP != address(0), ATOMIC_SWAPRegistry__NoATOMIC_SWAPFoundForThisToken());
 
-        bytes memory encodedArgs =
-            abi.encode(ATOMIC_SWAP, token, refundAddress, redeemer, timelock, secretHash, amount);
-        bytes32 salt =
-            keccak256(abi.encodePacked(token, refundAddress, redeemer, timelock, secretHash, amount));
+        bytes memory encodedArgs = abi.encode(ATOMIC_SWAP, token, refundAddress, redeemer, timelock, secretHash, amount);
+        bytes32 salt = keccak256(abi.encodePacked(token, refundAddress, redeemer, timelock, secretHash, amount));
         address _implUDA = implUDA;
 
         // getting the ERC20SwapAddress
@@ -124,10 +121,8 @@ contract ATOMIC_SWAPRegistry is Ownable {
         bytes32 secretHash
     ) external returns (address) {
         require(nativeATOMIC_SWAP != address(0), ATOMIC_SWAPRegistry__NoNativeATOMIC_SWAPFound());
-        bytes memory encodedArgs =
-            abi.encode(nativeATOMIC_SWAP, refundAddress, redeemer, timelock, secretHash, amount);
-        bytes32 salt =
-            keccak256(abi.encodePacked(refundAddress, redeemer, timelock, secretHash, amount));
+        bytes memory encodedArgs = abi.encode(nativeATOMIC_SWAP, refundAddress, redeemer, timelock, secretHash, amount);
+        bytes32 salt = keccak256(abi.encodePacked(refundAddress, redeemer, timelock, secretHash, amount));
         address _implNativeUDA = implNativeUDA;
 
         // getting Native swap address
