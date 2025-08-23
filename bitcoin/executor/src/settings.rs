@@ -44,7 +44,7 @@ impl Settings {
     pub fn get_network(&self) -> Result<bitcoin::Network, Box<dyn std::error::Error>> {
         match self.bitcoin.network.as_str() {
             "mainnet" => Ok(bitcoin::Network::Bitcoin),
-            "testnet" => Ok(bitcoin::Network::Testnet),
+            "testnet" => Ok(bitcoin::Network::Testnet4),
             "regtest" => Ok(bitcoin::Network::Regtest),
             "signet" => Ok(bitcoin::Network::Signet),
             _ => Err(format!("Unknown network: {}", self.bitcoin.network).into()),

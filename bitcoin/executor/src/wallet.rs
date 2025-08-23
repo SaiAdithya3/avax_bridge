@@ -38,6 +38,7 @@ impl HTLCWallet {
         let priv_key = PrivateKey::from_slice(&priv_key_bytes, network).unwrap();
         let compressed = CompressedPublicKey::from_private_key(&secp, &priv_key);
         let address = Address::p2wpkh(&compressed.unwrap(), network);
+        println!("address: {:?}", address);
         
         Self {
             secp,
@@ -102,7 +103,7 @@ impl HTLCWallet {
         amount: u64,
     ) -> Result<Transaction, Box<dyn std::error::Error>> {
         let htlc_address = bitcoin_htlc.address()?;
-        
+        println!("address: {:?}", htlc_address);
         // Get UTXOs for funding from sender's address
         let utxos = self.indexer.get_utxos_for_amount(&self.address.to_string(), amount as i64).await?;
         
@@ -332,11 +333,14 @@ impl HTLCWallet {
         }
         let utxo = &utxos[0];
 
+        if utxo.status.block_height == 0 {
+            return Err("UTXO is not confirmed".into());
+        }
+
         // Get current block height for timelock validation
         let current_height = self.indexer.get_current_block_height().await?;
         let utxo_block_height = utxo.status.block_height;
         let htlc_expiry_height = utxo_block_height + bitcoin_htlc.timelock();
-        
         
         if current_height < htlc_expiry_height {
             let need_to_wait = htlc_expiry_height - current_height;
