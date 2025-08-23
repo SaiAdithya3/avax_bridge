@@ -99,6 +99,29 @@ export class WatcherManager {
     await this.start();
   }
 
+  /**
+   * Update the event handler service
+   * This allows updating the event handler after initialization, useful for enabling database operations
+   */
+  async updateEventHandler(newEventHandler: EventHandlerService): Promise<void> {
+    logger.info('Updating event handler service...');
+    
+    // Update the main event handler
+    this.eventHandler = newEventHandler;
+    
+    // Update all existing watchers with the new event handler
+    for (const [chainId, watcher] of this.watchers) {
+      try {
+        await watcher.updateEventHandler(newEventHandler);
+        logger.info(`Updated event handler for chain: ${chainId}`);
+      } catch (error) {
+        logger.error(`Failed to update event handler for chain ${chainId}:`, error);
+      }
+    }
+    
+    logger.info('Event handler service updated successfully');
+  }
+
   async addChain(chainConfig: Chain): Promise<void> {
     try {
       logger.info(`Adding new chain: ${chainConfig.id}`);
@@ -123,8 +146,6 @@ export class WatcherManager {
         if (this.isRunning) {
           await watcher.start();
         }
-        
-        logger.info(`Successfully added chain: ${chainConfig.id}`);
       } else {
         logger.warn(`No contracts configured for chain ${chainConfig.id}`);
       }
@@ -143,7 +164,6 @@ export class WatcherManager {
       if (watcher) {
         await watcher.stop();
         this.watchers.delete(chainId);
-        logger.info(`Successfully removed chain: ${chainId}`);
       } else {
         logger.warn(`Chain ${chainId} not found`);
       }
@@ -180,9 +200,7 @@ export class WatcherManager {
           // Start if manager is running
           if (this.isRunning) {
             await newWatcher.start();
-          }
-          
-          logger.info(`Successfully added contract ${contractConfig.name} to chain ${chainId}`);
+          }          
         }
       } else {
         logger.warn(`Chain ${chainId} not found, cannot add contract`);

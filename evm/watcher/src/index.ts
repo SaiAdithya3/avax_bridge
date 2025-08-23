@@ -3,6 +3,7 @@ import { WatcherManager } from './services/watcherManager';
 import { DatabaseService } from './services/database';
 import { chainConfig, WATCHER_CONFIG, addContractToChain } from '../config';
 import { logger } from './utils/logger';
+import { HTLCService } from './services/htlcService';
 
 export class EVMWatcher {
   private watcherManager: WatcherManager;
@@ -56,25 +57,35 @@ export class EVMWatcher {
   }
 
   async start(): Promise<void> {
-    try {
-      logger.info('Starting EVM Watcher...');
-      
+    try {      
       // Initialize database if enabled
       if (this.useDatabase && this.databaseService) {
         try {
+          logger.info('🔌 Attempting to connect to database...');
           await this.databaseService.connect();
-          await this.databaseService.createIndexes();
-          logger.info('Database connected and indexes created');
+                    
+          // Create new event handler with database service
+          this.eventHandler = new EventHandlerService(this.databaseService);
+          
+          // Update the watcher manager with the new event handler
+          await this.watcherManager.updateEventHandler(this.eventHandler);
+          
+          logger.info('✅ Database connected successfully - HTLC updates will work');
         } catch (error) {
-          logger.warn('Failed to connect to database, continuing without database operations:', error);
+          logger.error('❌ Failed to connect to database:', error);
+          logger.warn('⚠️  Continuing without database operations - HTLC updates will be skipped');
           this.useDatabase = false;
+          // Recreate event handler without database
+          this.eventHandler = new EventHandlerService();
+          // Update the watcher manager with the new event handler
+          await this.watcherManager.updateEventHandler(this.eventHandler);
         }
+      } else {
+        logger.info('ℹ️  Database operations disabled - HTLC updates will be skipped');
       }
       
       // Start watcher manager
       await this.watcherManager.start();
-      
-      logger.info('EVM Watcher started successfully');
       
       // Start health monitoring
       this.startHealthMonitoring();
@@ -93,15 +104,19 @@ export class EVMWatcher {
           logger.warn('Health check failed:', health.details);
         }
         
-        // Log status every 5 minutes
-        const status = this.watcherManager.getStatus();
-        logger.info('Watcher status:', status);
-        
-        // Check database health if enabled
+        // Check database connection status
         if (this.useDatabase && this.databaseService) {
           const dbConnected = this.databaseService.isDatabaseConnected();
           if (!dbConnected) {
-            logger.warn('Database connection lost');
+            logger.warn('⚠️  Database connection lost - attempting to reconnect...');
+            try {
+              await this.databaseService.connect();
+              logger.info('✅ Database reconnected successfully');
+            } catch (error) {
+              logger.error('❌ Failed to reconnect to database:', error);
+            }
+          } else {
+            logger.debug('✅ Database connection healthy');
           }
         }
         
@@ -111,11 +126,9 @@ export class EVMWatcher {
     }, 5 * 60 * 1000); // 5 minutes
   }
 
-  // Public methods for external control
   async stop(): Promise<void> {
     await this.watcherManager.stop();
     
-    // Disconnect database if connected
     if (this.databaseService && this.databaseService.isDatabaseConnected()) {
       await this.databaseService.disconnect();
     }
@@ -141,9 +154,7 @@ export class EVMWatcher {
       
       // Add to watcher manager
       await this.watcherManager.addContractToChain(chainId, contractConfig);
-      
-      logger.info(`Successfully added contract ${contractConfig.name} to chain ${chainId}`);
-    } catch (error) {
+      } catch (error) {
       logger.error(`Failed to add contract to chain ${chainId}:`, error);
       throw error;
     }
@@ -153,7 +164,6 @@ export class EVMWatcher {
   async addChain(chainConfig: any): Promise<void> {
     try {
       await this.watcherManager.addChain(chainConfig);
-      logger.info(`Successfully added chain: ${chainConfig.id}`);
     } catch (error) {
       logger.error(`Failed to add chain ${chainConfig.id}:`, error);
       throw error;
@@ -162,26 +172,29 @@ export class EVMWatcher {
 
   // Method to enable database operations after initialization
   async enableDatabase(): Promise<void> {
-    if (this.databaseService) {
-      try {
-        await this.databaseService.connect();
-        await this.databaseService.createIndexes();
-        this.useDatabase = true;
-        logger.info('Database operations enabled');
-      } catch (error) {
-        logger.error('Failed to enable database operations:', error);
-        throw error;
+    try {
+      if (!this.databaseService) {
+        this.databaseService = new DatabaseService();
+        logger.info('Database service created');
       }
-    } else {
-      this.databaseService = new DatabaseService();
-      await this.enableDatabase();
+      
+      await this.databaseService.connect();
+      this.useDatabase = true;
+      
+      // Update the event handler with the new database service
+      this.eventHandler = new EventHandlerService(this.databaseService);
+      logger.info('Event handler updated with database service');
+      
+    } catch (error) {
+      logger.error('Failed to enable database operations:', error);
+      this.useDatabase = false;
+      throw error;
     }
   }
 
   // Method to disable database operations
   disableDatabase(): void {
     this.useDatabase = false;
-    logger.info('Database operations disabled');
   }
 
   // Getter for database service
@@ -193,30 +206,53 @@ export class EVMWatcher {
   isDatabaseEnabled(): boolean {
     return this.useDatabase;
   }
+
+  // Get current database status
+  getDatabaseStatus(): { enabled: boolean; connected: boolean; serviceExists: boolean } {
+    return {
+      enabled: this.useDatabase,
+      connected: this.databaseService?.isDatabaseConnected() || false,
+      serviceExists: !!this.databaseService
+    };
+  }
 }
 
 // Main execution
 async function main() {
-  // Create watcher without database initially
-  const watcher = new EVMWatcher(false);
+  // Create watcher with database enabled from the start
+  const watcher = new EVMWatcher(true);
   
-  try {
-    await watcher.start();
+  try {    
+    await watcher.start();    
+        
+    // Keep the process alive
+    const keepAlive = setInterval(() => {
+      // This keeps the event loop running
+    }, 1000);
     
-    // Keep the process running
-    process.on('beforeExit', async () => {
+    // Handle graceful shutdown
+    const shutdown = async (signal: string) => {
+      logger.info(`Received ${signal}, shutting down gracefully...`);
+      clearInterval(keepAlive);
       await watcher.stop();
+      process.exit(0);
+    };
+    
+    // Handle different shutdown signals
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGUSR2', () => shutdown('SIGUSR2')); // For nodemon
+    
+    // Also handle uncaught exceptions
+    process.on('uncaughtException', (error) => {
+      logger.error('Uncaught Exception:', error);
+      shutdown('uncaughtException');
     });
     
-    // Example: Enable database later if needed
-    // setTimeout(async () => {
-    //   try {
-    //     await watcher.enableDatabase();
-    //     logger.info('Database operations now enabled');
-    //   } catch (error) {
-    //     logger.error('Failed to enable database:', error);
-    //   }
-    // }, 10000); // Enable after 10 seconds
+    process.on('unhandledRejection', (reason, promise) => {
+      logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+      shutdown('unhandledRejection');
+    });
     
   } catch (error) {
     logger.error('Failed to start watcher:', error);
