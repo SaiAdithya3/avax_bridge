@@ -26,7 +26,13 @@ async fn main() -> Result<()> {
     let config = settings.to_bitcoin_config();
 
     // Create store and watcher
-    let _store = BitcoinStore::new(config);
+    let mut store = BitcoinStore::new(config);
+    
+    // Connect to MongoDB
+    if let Err(e) = store.connect_mongodb().await {
+        log::warn!("Failed to connect to MongoDB: {}. Will use mock data.", e);
+    }
+    
     let mut watcher = create_bitcoin_watcher(
         settings.to_bitcoin_config().network,
         settings.bitcoin.indexer_url.clone()

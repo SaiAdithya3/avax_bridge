@@ -1,4 +1,5 @@
-use crate::store::{BitcoinStore, BitcoinHtlcParams, HtlcStatus, BitcoinConfig, BitcoinNetwork, Swap};
+use crate::store::{BitcoinStore, BitcoinHtlcParams, HtlcStatus, BitcoinConfig, BitcoinNetwork};
+use primitives::types::Swap;
 use crate::events::{BitcoinEvent, EventHandler, BitcoinEventHandler};
 use primitives::indexer::SimpleIndexer;
 use std::collections::HashMap;
@@ -306,8 +307,8 @@ pub fn create_bitcoin_watcher(network: BitcoinNetwork, indexer_url: String) -> R
     let config = BitcoinConfig {
         network,
         indexer_url,
-        min_confirmations: 6,
-        block_time: 600, // 10 minutes
+        mongodb_uri: "mongodb://localhost:27017".to_string(),
+        database_name: "bitcoin".to_string(),
     };
     
     let store = BitcoinStore::new(config);

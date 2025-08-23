@@ -1,33 +1,15 @@
+use primitives::types::Swap;
+use primitives::types::Chain;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use anyhow::Result;
 use std::clone::Clone;
-use reqwest;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Swap {
-    pub created_at: String,
-    pub swap_id: String,
-    pub chain: String,
-    pub asset: String,
-    pub htlc_address: String,
-    pub token_address: String,
-    pub initiator: String,
-    pub redeemer: String,
-    pub filled_amount: String,
-    pub timelock: u32,
-    pub amount: String,
-    pub secret_hash: String,
-    pub secret: String,
-    pub initiate_tx_hash: String,
-    pub redeem_tx_hash: String,
-    pub refund_tx_hash: String,
-    pub initiate_block_number: Option<String>,
-    pub redeem_block_number: Option<String>,
-    pub refund_block_number: Option<String>,
-}
+use mongodb::{Client, Collection, Database, Cursor};
+use mongodb::bson::{doc, DateTime};
+use chrono::Utc;
+use futures::stream::StreamExt;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BitcoinHtlcParams {
@@ -54,8 +36,8 @@ pub enum HtlcStatus {
 pub struct BitcoinConfig {
     pub network: BitcoinNetwork,
     pub indexer_url: String,
-    pub min_confirmations: u32,
-    pub block_time: u32, // seconds
+    pub mongodb_uri: String,
+    pub database_name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,6 +51,7 @@ pub enum BitcoinNetwork {
 pub struct BitcoinStore {
     htlc_params: Arc<RwLock<HashMap<String, BitcoinHtlcParams>>>,
     config: BitcoinConfig,
+    db: Option<Database>,
 }
 
 impl BitcoinStore {
@@ -76,6 +59,23 @@ impl BitcoinStore {
         Self {
             htlc_params: Arc::new(RwLock::new(HashMap::new())),
             config,
+            db: None,
+        }
+    }
+
+    pub async fn connect_mongodb(&mut self) -> Result<()> {
+        let client = Client::with_uri_str(&self.config.mongodb_uri).await?;
+        let db = client.database(&self.config.database_name);
+        self.db = Some(db);
+        log::info!("Connected to MongoDB database: {}", self.config.database_name);
+        Ok(())
+    }
+
+    fn get_swaps_collection(&self) -> Result<Collection<Swap>> {
+        if let Some(db) = &self.db {
+            Ok(db.collection::<Swap>("swaps"))
+        } else {
+            Err(anyhow::anyhow!("MongoDB not connected"))
         }
     }
 
@@ -124,105 +124,119 @@ impl BitcoinStore {
     }
 
     pub async fn get_active_swaps(&self) -> Result<Vec<Swap>> {
-        // This would integrate with your actual database
-        // Similar to the Go code:
-        // sevenDays := time.Now().Add(-168 * time.Hour)
-        // result := s.db.
-        //     Where("chain = ? AND asset = ?", s.chain, s.asset).
-        //     Where("amount > 0").
-        //     Where(`redeem_block_number IS NULL`).
-        //     Where(`refund_block_number IS NULL`).
-        //     Where("created_at >= ?", sevenDays).
-        //     Find(&swaps)
+        // Try to get from MongoDB first
+        if let Ok(collection) = self.get_swaps_collection() {
+            let seven_days_ago = DateTime::from_millis(
+                (Utc::now() - chrono::Duration::days(7)).timestamp_millis()
+            );
+            
+            let filter = doc! {
+                "chain": "bitcoin_testnet",
+                "asset": "BTC",
+                "amount": { "$gt": "0" },
+                "redeem_block_number": { "$exists": false },
+                "refund_block_number": { "$exists": false },
+                "created_at": { "$gte": seven_days_ago }
+            };
+            
+            let mut cursor = collection.find(filter).await?;
+            let mut swaps = Vec::new();
+            
+            while let Some(swap) = cursor.next().await {
+                swaps.push(swap?);
+            }
+            
+            log::info!("Found {} active swaps from MongoDB", swaps.len());
+            return Ok(swaps);
+        }
         
-        // For now, return empty vector - you'll need to implement actual database integration
-        // This should query your database for active Bitcoin swaps with the following conditions:
-        // - chain = "bitcoin" 
-        // - asset = "BTC"
-        // - amount > 0
-        // - redeem_block_number IS NULL
-        // - refund_block_number IS NULL
-        // - created_at >= (current_time - 7 days)
+        // Fallback to mock data if MongoDB is not available
+        log::warn!("MongoDB not available, using mock data");
+        let current_time = DateTime::from_millis(Utc::now().timestamp_millis());
         
-        let current_time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)?
-            .as_secs();
-        let _seven_days_ago = current_time - (7 * 24 * 60 * 60); // 7 days in seconds
-        
-        // TODO: Implement actual database query here
-        // Example SQL equivalent:
-        // SELECT * FROM swaps 
-        // WHERE chain = 'bitcoin' 
-        //   AND asset = 'BTC' 
-        //   AND amount > 0 
-        //   AND redeem_block_number IS NULL 
-        //   AND refund_block_number IS NULL 
-        //   AND created_at >= ?
-        
-        // For testing, return some mock orders
-        let mock_orders = vec![
+        let mock_swaps = vec![
             Swap {
-                created_at: current_time.to_string(),
-                swap_id: "tb1py2rxn9f2zq0s6h2jpu8tpvyu4zvh4uusvaztfvh4k39asyr93f6sp5qc4e".to_string(), // Example taproot script address
-                chain: "bitcoin".to_string(),
+                id: None,
+                created_at: current_time,
+                swap_id: "tb1py2rxn9f2zq0s6h2jpu8tpvyu4zvh4uusvaztfvh4k39asyr93f6sp5qc4e".to_string(),
+                chain: Chain::BitcoinTestnet,
                 asset: "BTC".to_string(),
                 htlc_address: "tb1py2rxn9f2zq0s6h2jpu8tpvyu4zvh4uusvaztfvh4k39asyr93f6sp5qc4e".to_string(),
                 token_address: "0x0000000000000000000000000000000000000000".to_string(),
                 initiator: "460f2e8ff81fc4e0a8e6ce7796704e3829e3e3eedb8db9390bdc51f4f04cf0a6".to_string(),
                 redeemer: "be4b9e8e8c0146b155d3ce35d0e3dfef1c99ef598b63e00524a912dd21480bce".to_string(),
                 filled_amount: "997000".to_string(),
-                timelock: 12, // 24 hours in blocks
                 amount: "997000".to_string(),
                 secret_hash: "731170d859f81a395a79e02cf3812e413b21793900e70ff77e48dfcf7ef6a4e6".to_string(),
                 secret: "".to_string(),
-                initiate_tx_hash: "".to_string(),
-                redeem_tx_hash: "".to_string(),
-                refund_tx_hash: "".to_string(),
+                initiate_tx_hash: None,
+                redeem_tx_hash: None,
+                refund_tx_hash: None,
                 initiate_block_number: None,
                 redeem_block_number: None,
                 refund_block_number: None,
             },
         ];
         
-        Ok(mock_orders)
+        Ok(mock_swaps)
     }
 
-    pub async fn update_order_redeem_block(&self, order_id: &str, block_number: u64) -> Result<()> {
-        // TODO: Implement database update
-        // UPDATE orders SET redeem_block_number = ? WHERE id = ?
-        log::info!("Updated order {} redeem block to {}", order_id, block_number);
-        Ok(())
-    }
-
-    pub async fn update_order_refund_block(&self, order_id: &str, block_number: u64) -> Result<()> {
-        // TODO: Implement database update
-        // UPDATE orders SET refund_block_number = ? WHERE id = ?
-        log::info!("Updated order {} refund block to {}", order_id, block_number);
-        Ok(())
-    }
-
-    // New methods for database updates
     pub async fn update_swap_initiate(&self, swap_id: &str, initiate_tx_hash: &str, filled_amount: &str, initiate_block_number: &str) -> Result<()> {
-        // TODO: Implement database update
-        // UPDATE swaps SET initiate_tx_hash = ?, filled_amount = ?, initiate_block_number = ? WHERE swap_id = ?
-        log::info!("Updated swap {} initiate: tx_hash={}, amount={}, block={}", 
-            swap_id, initiate_tx_hash, filled_amount, initiate_block_number);
+        if let Ok(collection) = self.get_swaps_collection() {
+            let filter = doc! { "swap_id": swap_id };
+            let update = doc! {
+                "$set": {
+                    "initiate_tx_hash": initiate_tx_hash,
+                    "filled_amount": filled_amount,
+                    "initiate_block_number": initiate_block_number
+                }
+            };
+            
+            let result = collection.update_one(filter, update).await?;
+            log::info!("Updated swap {} initiate in MongoDB: {} documents modified", swap_id, result.modified_count);
+        } else {
+            log::info!("Updated swap {} initiate: tx_hash={}, amount={}, block={}", 
+                swap_id, initiate_tx_hash, filled_amount, initiate_block_number);
+        }
         Ok(())
     }
 
     pub async fn update_swap_redeem(&self, swap_id: &str, redeem_tx_hash: &str, redeem_block_number: &str, secret: &str) -> Result<()> {
-        // TODO: Implement database update
-        // UPDATE swaps SET redeem_tx_hash = ?, redeem_block_number = ?, secret = ? WHERE swap_id = ?
-        log::info!("Updated swap {} redeem: tx_hash={}, block={}, secret={}", 
-            swap_id, redeem_tx_hash, redeem_block_number, secret);
+        if let Ok(collection) = self.get_swaps_collection() {
+            let filter = doc! { "swap_id": swap_id };
+            let update = doc! {
+                "$set": {
+                    "redeem_tx_hash": redeem_tx_hash,
+                    "redeem_block_number": redeem_block_number,
+                    "secret": secret
+                }
+            };
+            
+            let result = collection.update_one(filter, update).await?;
+            log::info!("Updated swap {} redeem in MongoDB: {} documents modified", swap_id, result.modified_count);
+        } else {
+            log::info!("Updated swap {} redeem: tx_hash={}, block={}, secret={}", 
+                swap_id, redeem_tx_hash, redeem_block_number, secret);
+        }
         Ok(())
     }
 
     pub async fn update_swap_refund(&self, swap_id: &str, refund_tx_hash: &str, refund_block_number: &str) -> Result<()> {
-        // TODO: Implement database update
-        // UPDATE swaps SET refund_tx_hash = ?, refund_block_number = ? WHERE swap_id = ?
-        log::info!("Updated swap {} refund: tx_hash={}, block={}", 
-            swap_id, refund_tx_hash, refund_block_number);
+        if let Ok(collection) = self.get_swaps_collection() {
+            let filter = doc! { "swap_id": swap_id };
+            let update = doc! {
+                "$set": {
+                    "refund_tx_hash": refund_tx_hash,
+                    "refund_block_number": refund_block_number
+                }
+            };
+            
+            let result = collection.update_one(filter, update).await?;
+            log::info!("Updated swap {} refund in MongoDB: {} documents modified", swap_id, result.modified_count);
+        } else {
+            log::info!("Updated swap {} refund: tx_hash={}, block={}", 
+                swap_id, refund_tx_hash, refund_block_number);
+        }
         Ok(())
     }
 }

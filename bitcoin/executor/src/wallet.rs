@@ -485,6 +485,10 @@ impl HTLCWallet {
     pub fn hash_preimage(preimage: &[u8; 32]) -> [u8; 32] {
         sha256::Hash::hash(preimage).to_byte_array()
     }
+
+    pub async fn broadcast_transaction(&self, transaction: &Transaction) -> Result<String, Box<dyn std::error::Error>> {
+        Ok(self.indexer.submit_tx(transaction).await?)
+    }
 }
 #[cfg(test)]
 mod tests {

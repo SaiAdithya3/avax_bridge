@@ -13,10 +13,10 @@ pub struct Settings {
 pub struct BitcoinSettings {
     pub network: String,
     pub indexer_url: String,
-    pub min_confirmations: u32,
-    pub block_time: u32,
     pub polling_interval: u32,
     pub log_level: String,
+    pub mongodb_uri: String,
+    pub database_name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,8 +70,8 @@ impl Settings {
         BitcoinConfig {
             network,
             indexer_url: self.bitcoin.indexer_url.clone(),
-            min_confirmations: self.bitcoin.min_confirmations,
-            block_time: self.bitcoin.block_time,
+            mongodb_uri: self.bitcoin.mongodb_uri.clone(),
+            database_name: self.bitcoin.database_name.clone(),
         }
     }
 
@@ -90,10 +90,10 @@ impl Default for Settings {
             bitcoin: BitcoinSettings {
                 network: "testnet".to_string(),
                 indexer_url: "https://blockstream.info/testnet/api".to_string(),
-                min_confirmations: 6,
-                block_time: 600,
                 polling_interval: 30,
                 log_level: "info".to_string(),
+                mongodb_uri: "mongodb://localhost:27017".to_string(),
+                database_name: "bitcoin_watcher".to_string(),
             }
         }
     }

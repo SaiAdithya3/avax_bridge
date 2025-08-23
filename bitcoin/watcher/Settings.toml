@@ -5,14 +5,14 @@ network = "testnet"
 # Bitcoin indexer URL
 indexer_url = "https://mempool.space/testnet4/api"
 
-# Minimum confirmations required for HTLC events
-min_confirmations = 6
 
-# Block time in seconds (10 minutes for Bitcoin)
-block_time = 600
 
 # Watcher polling interval in seconds
 polling_interval = 30
 
 # Log level (trace, debug, info, warn, error)
 log_level = "info"
+
+# MongoDB configuration
+mongodb_uri = "mongodb://localhost:27017"
+database_name = "orderbook"

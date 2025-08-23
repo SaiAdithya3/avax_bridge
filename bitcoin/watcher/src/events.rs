@@ -113,12 +113,13 @@ impl EventHandler for BitcoinEventHandler {
                 log::info!("HTLC refunded: {} with tx: {} at block {}", 
                     id, tx_hash, block_height);
             }
+            BitcoinEvent::HtlcExpired { id } => {
+                self.store.update_htlc_status(&id, HtlcStatus::Expired).await?;
+                log::info!("HTLC expired: {}", id);
+            }
             BitcoinEvent::AddressBalanceChanged { address, old_balance, new_balance, tx_hash } => {
                 log::info!("Address {} balance changed: {} -> {} sats (tx: {})", 
                     address, old_balance, new_balance, tx_hash);
-            }
-            _ => {
-                log::info!("Unhandled event: {:?}", event);
             }
         }
         Ok(())
