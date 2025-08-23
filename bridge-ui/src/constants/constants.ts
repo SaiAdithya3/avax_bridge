@@ -20,4 +20,5 @@ export const network = 'testnet';
 
 export const API_URLS = {
   QUOTE: 'http://localhost:3000',
+  ORDERBOOK: 'http://localhost:3000',
 } as const;
