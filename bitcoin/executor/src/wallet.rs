@@ -388,17 +388,14 @@ impl HTLCWallet {
          // So we need to set the transaction locktime to satisfy the script's requirements
          let mut tx = Transaction {
              version: Version::TWO,
-             // Set locktime to the current block height
-             // OP_CHECKLOCKTIMEVERIFY checks that tx.locktime >= script.timelock
-             lock_time: LockTime::from_height(current_height as u32).expect("Valid block height"),
+             lock_time: LockTime::ZERO,
              input: vec![TxIn {
                  previous_output: OutPoint {
                      txid,
                      vout: utxo.vout,
                  },
                  script_sig: ScriptBuf::new(),
-                 // Disable relative locktime (BIP68) but enable absolute locktime
-                 sequence: Sequence::ENABLE_LOCKTIME_NO_RBF, 
+                 sequence: Sequence(bitcoin_htlc.timelock() as u32), 
                  witness: Witness::new(),
              }],
              output: vec![TxOut {
@@ -494,7 +491,8 @@ impl HTLCWallet {
 mod tests {
     use super::*;
     use bitcoin::{hex, secp256k1::SecretKey};
-    use ::hex::decode;
+    use ::hex::{decode, encode};
+    use rand::RngCore;
     use std::str::FromStr;
 
     #[tokio::test]
@@ -618,8 +616,15 @@ mod tests {
 
          let wallet = HTLCWallet::new(&private_key_hex, network, indexer_url);
          
+         let mut random_bytes = [0u8; 32];
+         rand::rng().fill_bytes(&mut random_bytes);
+         let secret = encode(random_bytes);
+         println!("Secret: {}", secret);
+         let secret_hash = sha256::Hash::hash(secret.as_bytes()).to_byte_array();
+         println!("Secret hash: {}", encode(secret_hash));
+
          // Create a BitcoinHTLC instance with timelock = 2
-         let secret_hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+         let secret_hash = encode(secret_hash);
          let initiator_pubkey = x_only_key.to_string();
          let redeemer_pubkey = "be4b9e8e8c0146b155d3ce35d0e3dfef1c99ef598b63e00524a912dd21480bce".to_string();
          let timelock = 2; // Short timelock for testing
