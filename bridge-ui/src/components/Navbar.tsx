@@ -9,7 +9,6 @@ import { Network } from '@gardenfi/utils';
 import avalancheLogo from '../assets/avalanche-avax-logo.svg';
 import bitcoinLogo from '../assets/bitcoin-btc-logo.svg';
 
-// Unique animation variants for a clean, modern entrance
 const navbarVariants = {
   hidden: { opacity: 0, scale: 0.98, filter: 'blur(8px)' },
   visible: {
@@ -43,7 +42,6 @@ export const Navbar = () => {
     isConnected: evmConnected,
     connectAsync,
     disconnect,
-    isPending: isEVMConnecting
   } = useEVMWallet();
   const {
     account,
@@ -51,7 +49,6 @@ export const Navbar = () => {
     isConnected: btcConnected,
     network, 
     disconnect: btcDisconnect,
-    isConnecting: isBitcoinConnecting
   } = useBitcoinWallet();
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -183,12 +180,6 @@ export const Navbar = () => {
                       <span className="text-sm text-blue-800 font-medium">
                         EVM: {formatAddress(evmAddress!)}
                       </span>
-                      {/* <button
-                        onClick={disconnect}
-                        className="text-blue-900 text-2xl border border-blue-900 rounded-full  ml-2"
-                      >
-                        ×
-                      </button> */}
                     </motion.div>
                   )}
                   {btcConnected && (
@@ -200,12 +191,6 @@ export const Navbar = () => {
                       <span className="text-sm text-orange-700 font-medium">
                         BTC: {formatAddress(account!)}
                       </span>
-                      {/* <button
-                        onClick={btcDisconnect}
-                        className="text-orange-600 hover:text-orange-800"
-                      >
-                        ×
-                      </button> */}
                     </motion.div>
                   )}
                   {!isBothWalletsConnected ? (
@@ -240,7 +225,6 @@ export const Navbar = () => {
                    </>
 
                   ) : (
-                    // add a disconnect button
                     <motion.button
                       variants={itemVariants}
                       onClick={() => {
