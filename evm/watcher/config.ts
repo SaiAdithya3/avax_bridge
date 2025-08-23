@@ -35,12 +35,12 @@ export const chainConfig: Chain[] = [
   },
   {
     id: 'avalanche_testnet',
-    startBlock: 32062545,
+    startBlock: 12934577,
     rpcUrl: "https://avax-fuji.g.alchemy.com/v2/GE3ckFWo2EhIEsrrYkc55",
     maxBlockSpan: 1000,
     contracts: [
       {
-        address: "0x5425890298aed601595a70AB815c96711a31Bc65", // USDC
+        address: "0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63", // USDC
         type: "erc20"
       }
     ]
