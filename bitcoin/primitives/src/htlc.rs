@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use bitcoin::{
     key::Secp256k1, secp256k1::{self, PublicKey, XOnlyPublicKey}, taproot::{LeafVersion, TaprootBuilder}, Address, KnownHrp, Network, ScriptBuf
 };
@@ -59,10 +59,10 @@ impl BitcoinHTLC {
     }
 
     fn construct_taproot(&self) -> Result<TaprootBuilder> {
-        let redeem_leaf = redeem_leaf(&self.secret_hash, &self.redeemer_pubkey).expect("error building redeem leaf");
-        let refund_leaf = refund_leaf(self.timelock, &self.initiator_pubkey).expect("error building refund leaf");
+        let redeem_leaf = redeem_leaf(&self.secret_hash, &self.redeemer_pubkey).context("error building redeem leaf")?;
+        let refund_leaf = refund_leaf(self.timelock, &self.initiator_pubkey).context("error building refund leaf")?;
 
-        let instant_refund = instant_refund_leaf(&self.initiator_pubkey, &self.redeemer_pubkey).expect("error building instand refund leaf");
+        let instant_refund = instant_refund_leaf(&self.initiator_pubkey, &self.redeemer_pubkey).context("error building instand refund leaf")?;
 
         let mut script_map = BTreeMap::new();
         script_map.insert(10, redeem_leaf);
@@ -78,7 +78,7 @@ impl BitcoinHTLC {
     pub fn address(&self) -> Result<Address> {
         let secp = Secp256k1::new();
 
-        let taproot_builder = self.construct_taproot().expect("error building taproot tree");
+        let taproot_builder = self.construct_taproot().context("error building taproot tree")?;
 
         if !taproot_builder.is_finalizable() {
             return Err(anyhow::anyhow!("Taproot builder is not finalizable"));

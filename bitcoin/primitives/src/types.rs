@@ -1,4 +1,4 @@
-use bitcoin::{ScriptBuf, Witness};
+use bitcoin::{ScriptBuf};
 
 pub struct BitcoinTaprootWitnessStack {
     pub signature: Vec<u8>,
