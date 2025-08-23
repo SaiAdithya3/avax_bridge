@@ -1,0 +1,513 @@
+import React, { useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useEVMWallet } from '../hooks/useEVMWallet';
+import { getFilteredOrders, getOrderStatusInfo, type UserOrder, type OrderStatus } from '../services/orderService';
+import { useOrdersStore } from '../store/ordersStore';
+import { API_URLS } from '../constants/constants';
+import OrderDetails from './OrderDetails';
+// Asset and chain logo URLs (not JSX)
+const ASSET_LOGOS: Record<string, string> = {
+  wbtc: "https://garden.imgix.net/token-images/wbtc.svg",
+  avax: "https://garden.imgix.net/token-images/avax.svg",
+  usdc: "https://garden.imgix.net/token-images/usdc.svg",
+  bitcoin: "https://garden.imgix.net/token-images/bitcoin.svg",
+};
+
+const CHAIN_LOGOS: Record<string, string> = {
+  'Arbitrum Sepolia': "https://garden.imgix.net/chain_images/arbitrumSepolia.svg",
+  'Avalanche Testnet': "https://garden.imgix.net/token-images/avax.svg",
+  'Bitcoin Testnet': "https://garden.imgix.net/token-images/bitcoin.svg",
+};
+
+function getAssetLogo(symbol: string) {
+  const key = symbol.toLowerCase();
+  let url: string | undefined;
+  if (key === "btc" || key === "bitcoin") url = ASSET_LOGOS.bitcoin;
+  else if (key === "usdc") url = ASSET_LOGOS.usdc;
+  else if (key === "wbtc") url = ASSET_LOGOS.wbtc;
+  else if (key === "avax") url = ASSET_LOGOS.avax;
+
+  if (url) {
+    return (
+      <img
+        src={url}
+        alt={symbol}
+        className="w-6 h-6 rounded-full object-contain"
+        style={{ background: "#fff" }}
+      />
+    );
+  }
+  return (
+    <div className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center text-xs font-medium">
+      {symbol.charAt(0)}
+    </div>
+  );
+}
+
+function getChainLogo(chainName: string) {
+  const url = CHAIN_LOGOS[chainName];
+  if (url) {
+    return (
+      <img
+        src={url}
+        alt={chainName}
+        className="w-5 h-5 rounded-full object-contain"
+        style={{ background: "#fff" }}
+      />
+    );
+  }
+  return (
+    <div className="w-5 h-5 bg-gray-100 rounded-full flex items-center justify-center text-[10px] font-medium text-gray-500">
+      {chainName.charAt(0)}
+    </div>
+  );
+}
+
+const UserOrders: React.FC = () => {
+  const { address: evmAddress } = useEVMWallet();
+  const { 
+    orders, 
+    isLoading, 
+    error, 
+    statusFilter,
+    setOrders, 
+    setLoading, 
+    setError, 
+    setStatusFilter 
+  } = useOrdersStore();
+  const [filteredOrders, setFilteredOrders] = useState<UserOrder[]>([]);
+  const [isPolling, setIsPolling] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+
+  // Status filter options
+  const statusOptions: Array<{ value: OrderStatus | 'all'; label: string; count: number }> = [
+    { value: 'all', label: 'All Orders', count: orders.length },
+    { value: 'created', label: 'Created', count: orders.filter(o => o.status === 'created').length },
+    { value: 'userInitiated', label: 'User Initiated', count: orders.filter(o => o.status === 'userInitiated').length },
+    { value: 'counterpartyInitiated', label: 'Counterparty Initiated', count: orders.filter(o => o.status === 'counterpartyInitiated').length },
+    { value: 'userRedeemed', label: 'User Redeemed', count: orders.filter(o => o.status === 'userRedeemed').length },
+    { value: 'counterPartyRedeemed', label: 'Counterparty Redeemed', count: orders.filter(o => o.status === 'counterPartyRedeemed').length },
+    { value: 'completed', label: 'Completed', count: orders.filter(o => o.status === 'completed').length },
+  ];
+
+  // Fetch orders with polling
+  const fetchOrders = async () => {
+    if (!evmAddress) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_URLS.ORDERBOOK}/orders/user/${evmAddress}`);
+      if (response.ok) {
+        const data = await response.json();
+        const apiOrders = data.result
+        
+        const userOrders = apiOrders.map((order: any) => {
+          // Determine order status based on the order state
+          let status: OrderStatus = 'created';
+          
+          if (order.source_swap?.initiate_tx_hash && order.destination_swap?.initiate_tx_hash) {
+            status = 'counterpartyInitiated';
+          } else if (order.source_swap?.initiate_tx_hash) {
+            status = 'userInitiated';
+          }
+          
+          if (order.source_swap?.redeem_tx_hash && order.destination_swap?.redeem_tx_hash) {
+            status = 'completed';
+          } else if (order.source_swap?.redeem_tx_hash) {
+            status = 'userRedeemed';
+          } else if (order.destination_swap?.redeem_tx_hash) {
+            status = 'counterPartyRedeemed';
+          }
+
+          return {
+            id: order.create_order?.create_id || order.source_swap?.swap_id || '',
+            status,
+            createdAt: order.created_at || new Date().toISOString(),
+            sourceAsset: order.source_swap?.asset || '',
+            destinationAsset: order.destination_swap?.asset || '',
+            sourceAmount: order.source_swap?.amount || '0',
+            destinationAmount: order.destination_swap?.amount || '0',
+            sourceChain: order.source_swap?.chain || '',
+            destinationChain: order.destination_swap?.chain || '',
+            sourceAddress: order.source_swap?.initiator || '',
+            destinationAddress: order.destination_swap?.initiator || '',
+            sourceTxHash: order.source_swap?.initiate_tx_hash || undefined,
+            destinationTxHash: order.destination_swap?.initiate_tx_hash || undefined,
+            secretHash: order.create_order?.secret_hash || '',
+            timelock: order.source_swap?.timelock || 0,
+            order, // Keep the full order object for reference
+          };
+        });
+        
+        setOrders(userOrders);
+        setFilteredOrders(getFilteredOrders(userOrders, statusFilter));
+      } else {
+        setError('Failed to fetch orders');
+      }
+    } catch (err) {
+      setError('Failed to fetch orders');
+      console.error('Error fetching orders:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Start polling
+  const startPolling = () => {
+    if (!evmAddress || isPolling) return;
+
+    setIsPolling(true);
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`${API_URLS.ORDERBOOK}/orders/user/${evmAddress}`);
+        if (response.ok) {
+          const data = await response.json();
+          const apiOrders = data.result;
+          
+          const userOrders = apiOrders.map((order: any) => {
+            // Determine order status based on the order state
+            let status: OrderStatus = 'created';
+            
+            if (order.source_swap?.initiate_tx_hash && order.destination_swap?.initiate_tx_hash) {
+              status = 'counterpartyInitiated';
+            } else if (order.source_swap?.initiate_tx_hash) {
+              status = 'userInitiated';
+            }
+            
+            if (order.source_swap?.redeem_tx_hash && order.destination_swap?.redeem_tx_hash) {
+              status = 'completed';
+            } else if (order.source_swap?.redeem_tx_hash) {
+              status = 'userRedeemed';
+            } else if (order.destination_swap?.redeem_tx_hash) {
+              status = 'counterPartyRedeemed';
+            }
+
+            return {
+              id: order.create_order?.create_id || order.source_swap?.swap_id || '',
+              status,
+              createdAt: order.created_at || new Date().toISOString(),
+              sourceAsset: order.source_swap?.asset || '',
+              destinationAsset: order.destination_swap?.asset || '',
+              sourceAmount: order.source_swap?.amount || '0',
+              destinationAmount: order.destination_swap?.amount || '0',
+              sourceChain: order.source_swap?.chain || '',
+              destinationChain: order.destination_swap?.chain || '',
+              sourceAddress: order.source_swap?.initiator || '',
+              destinationAddress: order.destination_swap?.initiator || '',
+              sourceTxHash: order.source_swap?.initiate_tx_hash || undefined,
+              destinationTxHash: order.destination_swap?.initiate_tx_hash || undefined,
+              secretHash: order.create_order?.secret_hash || '',
+              timelock: order.source_swap?.timelock || 0,
+              order, // Keep the full order object for reference
+            };
+          });
+          
+          setOrders(userOrders);
+          setFilteredOrders(getFilteredOrders(userOrders, statusFilter));
+        }
+      } catch (err) {
+        console.error('Polling error:', err);
+      }
+    }, 10000); // Poll every 10 seconds
+
+    // Cleanup after 2 minutes
+    setTimeout(() => {
+      clearInterval(pollInterval);
+      setIsPolling(false);
+    }, 120000);
+
+    return () => clearInterval(pollInterval);
+  };
+
+  useEffect(() => {
+    if (evmAddress) {
+      fetchOrders();
+      startPolling();
+    }
+  }, [evmAddress]);
+
+  useEffect(() => {
+    setFilteredOrders(getFilteredOrders(orders, statusFilter));
+  }, [orders, statusFilter]);
+
+  // Helper function to extract asset symbol from asset string
+  const getAssetSymbol = (assetString: string): string => {
+    const parts = assetString.split(':');
+    return parts[parts.length - 1]?.toUpperCase() || assetString.toUpperCase();
+  };
+
+  // Helper function to extract chain name from asset string
+  const getChainName = (assetString: string): string => {
+    const parts = assetString.split(':');
+    return parts[0]?.replace(/_/g, ' ') || assetString;
+  };
+
+  // Helper function to format amount
+  const formatAmount = (amount: string): string => {
+    const num = parseFloat(amount);
+    if (isNaN(num)) return '0';
+    return num.toLocaleString(undefined, { 
+      minimumFractionDigits: 2, 
+      maximumFractionDigits: 6 
+    });
+  };
+
+  // Helper function to format date
+  const formatDate = (dateString: string): string => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+  };
+
+  // Show OrderDetails if an order is selected
+  if (selectedOrderId) {
+    return (
+      <OrderDetails 
+        orderId={selectedOrderId} 
+        onBack={() => setSelectedOrderId(null)} 
+      />
+    );
+  }
+
+  if (!evmAddress) {
+    return (
+      <div className="max-w-4xl mx-auto p-6">
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Connect Wallet</h3>
+            <p className="text-gray-500">Please connect your wallet to view your orders</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-6xl mx-auto p-6">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">My Orders</h1>
+        <p className="text-gray-600">Track your cross-chain atomic swaps</p>
+      </div>
+
+      {/* Status Filter */}
+      <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mb-6">
+        <div className="flex flex-wrap gap-2">
+          {statusOptions.map((option) => (
+            <button
+              key={option.value}
+              onClick={() => setStatusFilter(option.value)}
+              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
+                statusFilter === option.value
+                  ? 'bg-[#e84142] text-white shadow-lg'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              {option.label}
+              <span className="ml-2 bg-white/20 px-2 py-0.5 rounded-full text-xs">
+                {option.count}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Loading State */}
+      {isLoading && (
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
+          <div className="flex items-center justify-center">
+            <div className="w-8 h-8 border-2 border-[#e84142] border-t-transparent rounded-full animate-spin mr-3"></div>
+            <span className="text-gray-600">Loading orders...</span>
+          </div>
+        </div>
+      )}
+
+      {/* Error State */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-6 mb-6">
+          <div className="flex items-center">
+            <svg className="w-5 h-5 text-red-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-red-700">{error}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Orders List */}
+      <AnimatePresence>
+        {filteredOrders.length === 0 && !isLoading ? (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8"
+          >
+            <div className="text-center">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Orders Found</h3>
+              <p className="text-gray-500">You don't have any orders with the selected status</p>
+            </div>
+          </motion.div>
+        ) : (
+          <div className="space-y-4">
+            {filteredOrders.map((order, index) => {
+              const statusInfo = getOrderStatusInfo(order.status);
+              const sourceSymbol = getAssetSymbol(order.sourceAsset);
+              const destinationSymbol = getAssetSymbol(order.destinationAsset);
+              const sourceChainName = getChainName(order.sourceAsset);
+              const destinationChainName = getChainName(order.destinationAsset);
+
+              const isNonInitiated = order.status === 'created';
+              
+              return (
+                <motion.div
+                  key={order.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                  className={`bg-white rounded-2xl shadow-lg border border-gray-100 p-6 transition-all duration-200 ${
+                    isNonInitiated 
+                      ? 'hover:shadow-xl cursor-pointer hover:border-[#e84142]/30' 
+                      : 'hover:shadow-xl'
+                  }`}
+                  onClick={isNonInitiated ? () => setSelectedOrderId(order.id) : undefined}
+                >
+                  {/* Order Header */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusInfo.color}`}>
+                        {statusInfo.icon} {statusInfo.label}
+                      </span>
+                      <span className="text-sm text-gray-500">#{order.id.slice(0, 8)}</span>
+                      {isNonInitiated && (
+                        <span className="text-xs text-[#e84142] bg-[#e84142]/10 px-2 py-1 rounded-full">
+                          Click to initiate
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-sm text-gray-500">{formatDate(order.createdAt)}</span>
+                  </div>
+
+                  {/* Order Details */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Source Asset */}
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-gray-700">From</span>
+                        <div className="flex items-center gap-2">
+                          {getAssetLogo(sourceSymbol)}
+                          <span className="font-semibold">{sourceSymbol}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          {getChainLogo(sourceChainName)}
+                          <span className="text-sm text-gray-600">{sourceChainName}</span>
+                        </div>
+                        <span className="font-semibold text-lg">{formatAmount(order.sourceAmount)}</span>
+                      </div>
+                    </div>
+
+                    {/* Destination Asset */}
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-gray-700">To</span>
+                        <div className="flex items-center gap-2">
+                          {getAssetLogo(destinationSymbol)}
+                          <span className="font-semibold">{destinationSymbol}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          {getChainLogo(destinationChainName)}
+                          <span className="text-sm text-gray-600">{destinationChainName}</span>
+                        </div>
+                        <span className="font-semibold text-lg">{formatAmount(order.destinationAmount)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Transaction Hashes */}
+                  {(order.sourceTxHash || order.destinationTxHash) && (
+                    <div className="mt-4 pt-4 border-t border-gray-100">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {order.sourceTxHash && (
+                          <div>
+                            <span className="text-sm font-medium text-gray-700">Source TX:</span>
+                            <a
+                              href={`https://explorer.avax-test.network/tx/${order.sourceTxHash}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block text-sm text-blue-600 hover:text-blue-800 truncate"
+                            >
+                              {order.sourceTxHash.slice(0, 10)}...{order.sourceTxHash.slice(-8)}
+                            </a>
+                          </div>
+                        )}
+                        {order.destinationTxHash && (
+                          <div>
+                            <span className="text-sm font-medium text-gray-700">Destination TX:</span>
+                            <a
+                              href={`https://explorer.avax-test.network/tx/${order.destinationTxHash}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block text-sm text-blue-600 hover:text-blue-800 truncate"
+                            >
+                              {order.destinationTxHash.slice(0, 10)}...{order.destinationTxHash.slice(-8)}
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Status Description */}
+                  <div className="mt-4 pt-4 border-t border-gray-100">
+                    <p className="text-sm text-gray-600">{statusInfo.description}</p>
+                    
+                    {/* Initiate Button for non-initiated orders */}
+                    {isNonInitiated && (
+                      <div className="mt-4 flex justify-end">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedOrderId(order.id);
+                          }}
+                          className="px-4 py-2 bg-[#e84142] text-white text-sm font-medium rounded-lg hover:bg-[#e84142]/90 transition-colors"
+                        >
+                          Initiate Order
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Polling Indicator */}
+      {isPolling && (
+        <div className="fixed bottom-6 right-6 bg-white rounded-xl shadow-lg border border-gray-100 p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+            <span className="text-sm text-gray-600">Live updates enabled</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default UserOrders;

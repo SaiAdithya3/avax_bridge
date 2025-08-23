@@ -157,7 +157,7 @@ const _initiateOnErc20HTLC = async (
 };
 
 export const redeem = async (order: Order): AsyncResult<string, string> => {
-  const { secret } = await generateSecret(order.source_swap.nonce);
+  const { secret } = await generateSecret(order.create_order.nonce);
   try {
     const res = await axios.post(API_URLS.ORDERBOOK + "/redeem", {
       order_id: order.create_order.create_id,
@@ -171,5 +171,59 @@ export const redeem = async (order: Order): AsyncResult<string, string> => {
     }
   } catch (error) {
     return Err(String(error));
+  }
+};
+
+export const initiateViaUDA = async (walletClient: WalletClient, order: Order): AsyncResult<`0x${string}`, string> => {
+  if (!walletClient) return Err("No wallet client found");
+  if (!walletClient.account) return Err("No account found");
+  
+  console.log('UDA Initiation - Order source chain:', order.source_swap.chain);
+  console.log('UDA Initiation - Current wallet chain:', await walletClient.getChainId());
+  
+  // Switch to the correct chain based on the order's source swap chain
+  const _walletClient = await switchOrAddNetwork(
+    order.source_swap.chain as EvmChain,
+    walletClient as WalletClient
+  );
+  console.log("walletClient", _walletClient)
+  if (!_walletClient.ok) return Err(_walletClient.error);
+  const wallet = _walletClient.val.walletClient;
+  
+  if (!wallet.account) return Err("No account found");
+  if (!wallet.chain) return Err("No chain found");
+
+  console.log('UDA Initiation - After switch, wallet chain:', wallet.chain.id);
+  console.log('UDA Initiation - Expected chain ID:', getChainId(order.source_swap.chain));
+
+  // Ensure we're on the correct chain for the transaction
+  if (wallet.chain.id !== getChainId(order.source_swap.chain)) {
+    return Err(`Chain mismatch. Expected ${order.source_swap.chain}, got ${wallet.chain.name}`);
+  }
+
+  const tx = await wallet.sendTransaction({
+    to: order.source_swap.deposit_address as `0x${string}`,
+    value: BigInt(order.source_swap.amount),
+    account: wallet.account, 
+    chain: wallet.chain,
+  });
+  if (!tx) return Err("Failed to send transaction");
+
+  return Ok(tx);
+};
+
+// Helper function to get chain ID from chain name
+const getChainId = (chain: string): number => {
+  console.log('Getting chain ID for:', chain);
+  switch (chain.toLowerCase()) {
+    case 'avalanche_testnet':
+      return 43113;
+    case 'arbitrum_sepolia':
+      return 421614;
+    case 'ethereum':
+      return 1;
+    default:
+      console.error('Unsupported chain:', chain);
+      throw new Error(`Unsupported chain: ${chain}`);
   }
 };

@@ -7,7 +7,7 @@ import avalancheLogo from "../assets/avalanche-avax-logo.svg";
 const ASSET_LOGOS: Record<string, string> = {
   wbtc: "https://garden.imgix.net/token-images/wbtc.svg",
   avax: avalancheLogo,
-  usdt: "https://garden.imgix.net/token-images/usdt.svg",
+  usdc: "https://garden.imgix.net/token-images/usdc.svg",
   bitcoin: "https://garden.imgix.net/token-images/bitcoin.svg",
 };
 
@@ -21,7 +21,7 @@ function getAssetLogo(symbol: string) {
   const key = symbol.toLowerCase();
   let url: string | undefined;
   if (key === "btc" || key === "bitcoin") url = ASSET_LOGOS.bitcoin;
-  else if (key === "usdt") url = ASSET_LOGOS.usdt;
+  else if (key === "usdc") url = ASSET_LOGOS.usdc;
   else if (key === "wbtc") url = ASSET_LOGOS.wbtc;
   else if (key === "avax") url = ASSET_LOGOS.avax;
 

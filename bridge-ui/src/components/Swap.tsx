@@ -2,6 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { useAssetsStore, type AssetOption } from '../store/assetsStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import {AssetDropdown} from './AssetDropdown';
+import { createOrder } from '../services/orderService';
+import { useBitcoinWallet } from '@gardenfi/wallet-connectors';
+import { useEVMWallet } from '../hooks/useEVMWallet';
+import OrderDetails from './OrderDetails';
 
 const Swap: React.FC = () => {
   const {
@@ -20,8 +24,11 @@ const Swap: React.FC = () => {
     clearError,
   } = useAssetsStore();
 
-  const [isDropdownOpen, setIsDropdownOpen] = useState<'from' | 'to' | null>(null);
+  const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
 
+  const [isDropdownOpen, setIsDropdownOpen] = useState<'from' | 'to' | null>(null);
+  const { account: btcAddress } = useBitcoinWallet();
+  const { address: evmAddress } = useEVMWallet();
   useEffect(() => {
     fetchAssets();
   }, [fetchAssets]);
@@ -35,6 +42,15 @@ const Swap: React.FC = () => {
     setIsDropdownOpen(null);
   };
 
+  // Show OrderDetails if order was created
+  if (createdOrderId) {
+    return (
+      <OrderDetails 
+        orderId={createdOrderId} 
+        onBack={() => setCreatedOrderId(null)} 
+      />
+    );
+  }
 
   return (
     <div className="max-w-xl mx-auto p-6">
@@ -138,6 +154,24 @@ const Swap: React.FC = () => {
           whileTap={{ scale: 0.98 }}
           disabled={!fromAsset || !toAsset || !sendAmount || isLoading || isQuoteLoading}
           className="w-full py-3 px-4 bg-[#e84142] text-white font-medium rounded-2xl hover:bg-[#e84142] focus:outline-none focus:ring-2 focus:ring-[#e84142]/70 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          onClick={async () => {
+            try {
+              const result = await createOrder({
+                btcAddress: btcAddress || '',
+                evmAddress: evmAddress || '',
+                fromAsset: fromAsset!,
+                toAsset: toAsset!,
+                sendAmount: sendAmount || '',
+                receiveAmount: receiveAmount || '',
+              });
+              
+              if (result.status === 'ok' && result.result) {
+                setCreatedOrderId(result.result);
+              }
+            } catch (error) {
+              console.error('Failed to create order:', error);
+            }
+          }}
         >
           {isLoading ? (
             <div className="flex items-center justify-center">

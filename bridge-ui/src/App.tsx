@@ -1,5 +1,5 @@
 import { Navbar } from './components/Navbar';
-import Swap from './components/Swap';
+import HomePage from './pages/HomePage';
 import './index.css';
 import { motion, useMotionValue, useTransform } from 'framer-motion';
 import { useRef, useEffect, useState } from 'react';
@@ -102,11 +102,9 @@ function App() {
 
       <Navbar />
 
-      {/* Main content centered */}
-      <main className="flex-1 flex items-center justify-center px-4 z-10">
-        <div className="w-full max-w-lg">
-          <Swap />
-        </div>
+      {/* Main content */}
+      <main className="flex-1 z-10 w-full">
+        <HomePage />
       </main>
     </div>
   );
