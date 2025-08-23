@@ -27,9 +27,9 @@ impl OrderToActionMapper {
     fn determine_action(&self, order: &MatchedOrder) -> ActionType {
         if order.destination_swap.initiate_tx_hash.is_none() || order.destination_swap.initiate_tx_hash.as_ref().unwrap().is_empty() {
             ActionType::Init
-        } else if (order.source_swap.redeem_tx_hash.is_none() || order.source_swap.redeem_tx_hash.as_ref().unwrap().is_empty()) && !order.destination_swap.secret.as_ref().unwrap().is_empty() {
+        } else if (order.source_swap.redeem_tx_hash.is_none() || order.source_swap.redeem_tx_hash.as_ref().unwrap().is_empty()) && !order.destination_swap.secret.as_ref().unwrap_or(&"".to_string()).is_empty() {
             ActionType::Redeem
-        } else if (order.destination_swap.refund_tx_hash.is_none() || order.destination_swap.refund_tx_hash.as_ref().unwrap().is_empty()) && order.destination_swap.initiate_tx_hash.is_some() {
+        } else if (order.destination_swap.refund_tx_hash.is_none() || order.destination_swap.refund_tx_hash.as_ref().unwrap().is_empty()) && order.destination_swap.initiate_tx_hash.is_some() && order.destination_swap.initiate_block_number.as_ref().unwrap_or(&"".to_string()).is_empty() {
             ActionType::Refund
         } else {
             ActionType::NoOp
@@ -41,7 +41,7 @@ impl OrderToActionMapper {
         
         // Create BitcoinHTLC from the order data
         let bitcoin_htlc = BitcoinHTLC::new(
-            order.destination_swap.secret.clone().unwrap(),
+            order.destination_swap.secret_hash.clone(),
             order.destination_swap.initiator.clone(),
             order.destination_swap.redeemer.clone(),
             12, // Default timelock - you might want to get this from order data
@@ -72,7 +72,7 @@ impl OrderToActionMapper {
         
         // Create BitcoinHTLC from the order data
         let bitcoin_htlc = BitcoinHTLC::new(
-            order.destination_swap.secret.clone().unwrap(),
+            order.destination_swap.secret_hash.clone(),
             order.destination_swap.initiator.clone(),
             order.destination_swap.redeemer.clone(),
             12, // Default timelock
@@ -103,7 +103,7 @@ impl OrderToActionMapper {
         
         // Create BitcoinHTLC from the order data
         let bitcoin_htlc = BitcoinHTLC::new(
-            order.destination_swap.secret.clone().unwrap(),
+            order.destination_swap.secret_hash.clone(),
             order.destination_swap.initiator.clone(),
             order.destination_swap.redeemer.clone(),
             12, // Default timelock
