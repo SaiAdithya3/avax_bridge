@@ -142,12 +142,13 @@ impl BitcoinWatcher {
                         let tx_details = self.get_transaction_details(&funding_utxo.txid).await?;
                         let confirmations = if funding_utxo.status.confirmed { 1 } else { 0 };
                         
+
                         let event = BitcoinEvent::HtlcFunded {
                             id: swap.swap_id.clone(),
                             tx_hash: funding_utxo.txid.clone(),
                             amount_sats: increase,
                             confirmations,
-                            block_height: tx_details.unwrap().block_height.unwrap(),
+                            block_height: tx_details.unwrap().block_height.unwrap_or(0),
                         };
                         
                         self.event_handler.handle_event(event).await?;
@@ -166,7 +167,7 @@ impl BitcoinWatcher {
                         tx_hash: funding_utxo.txid.clone(),
                         amount_sats: funding_utxo.value,
                         confirmations,
-                        block_height: tx_details.unwrap().block_height.unwrap(),
+                        block_height: tx_details.unwrap().block_height.unwrap_or(0),
                     };
                     
                     self.event_handler.handle_event(event).await?;
@@ -302,15 +303,7 @@ struct TransactionDetails {
     confirmations: bool,
 }
 
-// Helper function to create a Bitcoin watcher with default configuration
-pub fn create_bitcoin_watcher(network: BitcoinNetwork, indexer_url: String) -> Result<BitcoinWatcher> {
-    let config = BitcoinConfig {
-        network,
-        indexer_url,
-        mongodb_uri: "mongodb://localhost:27017".to_string(),
-        database_name: "bitcoin".to_string(),
-    };
-    
-    let store = BitcoinStore::new(config);
+// Helper function to create a Bitcoin watcher with a store
+pub fn create_bitcoin_watcher(store: BitcoinStore) -> Result<BitcoinWatcher> {
     BitcoinWatcher::new(store)
 }

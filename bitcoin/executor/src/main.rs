@@ -17,11 +17,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load settings from Settings.toml
     let settings = Settings::load()?;
     let network = settings.get_network()?;
+    tracing_subscriber::fmt::init();
     
-    println!("Starting Bitcoin HTLC Executor...");
-    println!("MongoDB: {}", settings.database.connection_string);
-    println!("Indexer: {}", settings.bitcoin.indexer_url);
-    println!("Network: {:?}", network);
+    tracing::info!("Starting Bitcoin HTLC Executor...");
+    tracing::info!("Indexer: {}", settings.bitcoin.indexer_url);
+    tracing::info!("Network: {:?}", network);
 
     // Generate user addresses from private key if not provided
     let mut user_addresses = settings.wallet.user_addresses;
@@ -32,6 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         user_addresses.push(x_only_key.to_string());
     }
 
+    tracing::info!("Bitcoin filler public key : {:?}", user_addresses);
     // Initialize orderbook
     let orderbook = OrderbookProvider::from_connection_string(&settings.database.connection_string).await?;
     let orderbook_box = Box::new(orderbook);

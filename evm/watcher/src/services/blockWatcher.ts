@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { Chain, ContractConfig, WatchedEvent, WatcherStatus, WatcherOptions } from '../types';
+import { Chain, ContractConfig, WatcherOptions } from '../types';
 import { EventHandlerService } from './eventHandler';
 import { AbiLoader } from './abiLoader';
 import { logger } from '../utils/logger';
@@ -76,7 +76,19 @@ export class BlockWatcher {
     logger.info(`Stopped watcher for chain: ${this.chainConfig.id}`);
   }
 
+  /**
+   * Update the event handler service
+   * This allows updating the event handler after initialization, useful for enabling database operations
+   */
+  async updateEventHandler(newEventHandler: EventHandlerService): Promise<void> {
+    logger.info(`Updating event handler for chain: ${this.chainConfig.id}`);
+    this.eventHandler = newEventHandler;
+    logger.info(`Event handler updated for chain: ${this.chainConfig.id}`);
+  }
+
   private async watchBlocks(): Promise<void> {
+    let statusCounter = 0;
+    
     while (this.isRunning) {
       try {
         // Check if we should stop before each iteration
@@ -87,22 +99,30 @@ export class BlockWatcher {
         
         // Process blocks from last processed + 1 to current
         if (this.currentBlock > this.lastProcessedBlock) {
+          const blocksToProcess = this.currentBlock - this.lastProcessedBlock;
+          logger.info(`New blocks available: ${blocksToProcess} blocks (${this.lastProcessedBlock + 1} to ${this.currentBlock})`);
           await this.processBlocks(this.lastProcessedBlock + 1, this.currentBlock);
+        } else {
+          logger.debug(`No new blocks. Current: ${this.currentBlock}, Last processed: ${this.lastProcessedBlock}`);
+        }
+        
+        // Periodic status update every 10 iterations
+        statusCounter++;
+        if (statusCounter % 10 === 0) {
+          logger.info(`Watcher status: Last processed block ${this.lastProcessedBlock}, Current block ${this.currentBlock}, Chain ${this.chainConfig.id}`);
         }
         
         // Update status
         await this.updateStatus();
-        
-        // Wait before next poll, but check isRunning periodically
-        await this.sleepWithInterrupt(this.options.pollInterval!);
+      
+        logger.debug(`Waiting 5 seconds before next poll cycle...`);
+        await this.sleepWithInterrupt(5000);
         
       } catch (error) {
-        if (!this.isRunning) break; // Exit if we're stopping
-        logger.error(`Error in block watching loop for chain ${this.chainConfig.id}:`, error);
+        logger.error(`Error in watch loop for chain ${this.chainConfig.id}:`, error);
         await this.handleError(error);
       }
     }
-    logger.info(`Block watching loop stopped for chain: ${this.chainConfig.id}`);
   }
 
   private async processBlocks(fromBlock: number, toBlock: number): Promise<void> {
@@ -125,10 +145,7 @@ export class BlockWatcher {
         // Update last processed block to the end of this batch
         this.lastProcessedBlock = batchEnd;
         this.retryCount = 0; // Reset retry count on success
-        processedBlocks += (batchEnd - batchStart + 1);
-        
-        logger.info(`Successfully processed batch ${batchStart}-${batchEnd}, found ${batchEvents} events`);
-        
+        processedBlocks += (batchEnd - batchStart + 1);        
       } catch (error) {
         logger.error(`Failed to process batch ${batchStart}-${batchEnd} for chain ${this.chainConfig.id}:`, error);
         
@@ -152,107 +169,71 @@ export class BlockWatcher {
   private async processBlockBatch(fromBlock: number, toBlock: number): Promise<number> {
     let totalEvents = 0;
     
-    // Process all blocks in the batch
-    for (let blockNumber = fromBlock; blockNumber <= toBlock && this.isRunning; blockNumber++) {
-      try {
-        const blockEvents = await this.processBlock(blockNumber);
-        totalEvents += blockEvents;
-      } catch (error) {
-        logger.error(`Failed to process block ${blockNumber} in batch:`, error);
-        // Continue with other blocks in the batch, but log the error
+    logger.info(`Processing batch: blocks ${fromBlock} to ${toBlock} for chain ${this.chainConfig.id}`);
+    
+    try {
+      // Process the entire batch range in one call instead of block by block
+      for (const contract of this.chainConfig.contracts) {
+        const contractEvents = await this.processContractEvents(contract, fromBlock, toBlock);
+        totalEvents += contractEvents.length;
       }
+      
+      // Only log if there are events found in the batch
+      if (totalEvents > 0) {
+        logger.info(`Batch ${fromBlock}-${toBlock}: Found ${totalEvents} total events`);
+      } else {
+        logger.debug(`Batch ${fromBlock}-${toBlock}: No events found`);
+      }
+      
+    } catch (error) {
+      logger.error(`Failed to process batch ${fromBlock}-${toBlock}:`, error);
+      throw error;
     }
     
     return totalEvents;
   }
 
-  private async processBlock(blockNumber: number): Promise<number> {
-    try {
-      logger.debug(`Processing block ${blockNumber}`);
-      
-      const block = await this.provider.getBlock(blockNumber);
-      if (!block) {
-        logger.warn(`Block ${blockNumber} not found`);
-        return 0;
-      }
-
-      const allEvents: WatchedEvent[] = [];
-      
-      // Process each contract
-      for (const contract of this.chainConfig.contracts) {
-        const contractEvents = await this.processContractEvents(contract, block, blockNumber);
-        allEvents.push(...contractEvents);
-      }
-
-      // Handle events instead of saving to database
-      if (allEvents.length > 0) {
-        logger.info(`Block ${blockNumber}: Found ${allEvents.length} events, processing them...`);
-        for (const event of allEvents) {
-          await this.handleEvent(event);
-        }
-      } else {
-        logger.debug(`Block ${blockNumber}: No events found`);
-      }
-
-      this.lastProcessedBlock = blockNumber;
-      logger.debug(`Successfully processed block ${blockNumber}`);
-      
-      return allEvents.length; // Return the number of events found
-      
-    } catch (error) {
-      logger.error(`Failed to process block ${blockNumber}:`, error);
-      throw error;
-    }
-  }
-
-  private async handleEvent(event: WatchedEvent): Promise<void> {
-    // Placeholder event handler - just log the event type
-    logger.info(`[EVENT] Type: ${event.eventName}, Contract: ${event.contractAddress} (${event.contractType}), Block: ${event.blockNumber}, Tx: ${event.transactionHash}`);
-    
-    // TODO: Add your custom event handling logic here
-    // For example:
-    // - Process Transfer events
-    // - Handle Approval events  
-    // - Send notifications
-    // - Update internal state
-    // - etc.
+  private async handleEvent(event: any): Promise<void> {
+    await this.eventHandler.handleEvent(event);
   }
 
   private async processContractEvents(
     contract: ContractConfig, 
-    block: ethers.Block, 
-    blockNumber: number
-  ): Promise<WatchedEvent[]> {
-    const events: WatchedEvent[] = [];
+    fromBlock: number,
+    toBlock: number
+  ): Promise<any[]> {
+    const events: any[] = [];
 
     try {
       // Load ABI for contract type and create interface
       const abi = AbiLoader.loadAbi(contract.type);
       const contractInterface = new ethers.Interface(abi);
       
-      // Log which events we're watching for this contract type
-      const availableEvents = AbiLoader.getEventsFromAbi(contract.type);
-      logger.debug(`Contract ${contract.address} (${contract.type}) - watching for events: ${availableEvents.join(', ')}`);
-
-      // Query logs directly from the contract for this specific block
+      // Query logs for the entire batch range in one RPC call
       const logs = await this.provider.getLogs({
         address: contract.address,
-        fromBlock: blockNumber,
-        toBlock: blockNumber
+        fromBlock: fromBlock,
+        toBlock: toBlock
       });
-
-      logger.debug(`Found ${logs.length} logs for contract ${contract.address} in block ${blockNumber}`);
 
       // Process each log
       for (let i = 0; i < logs.length; i++) {
         const log = logs[i];
         try {
+          // Get block info for this log
+          const block = await this.provider.getBlock(log.blockNumber!);
+          if (!block) {
+            logger.warn(`Block ${log.blockNumber} not found for log ${i}`);
+            continue;
+          }
+
           const event = await this.parseLogToEvent(log, contract, block, contractInterface, i);
           if (event) {
             events.push(event);
-            logger.debug(`Successfully parsed event ${event.eventName} from log ${i} in block ${blockNumber}`);
+            // Handle the event immediately
+            await this.handleEvent(event);
           } else {
-            logger.debug(`Failed to parse log ${i} in block ${blockNumber} - might be unknown event`);
+            logger.debug(`Failed to parse log ${i} in block ${log.blockNumber} - might be unknown event`);
           }
         } catch (error) {
           logger.error(`Failed to parse log for contract ${contract.address}:`, error);
@@ -260,11 +241,18 @@ export class BlockWatcher {
         }
       }
 
-      logger.info(`Contract ${contract.address} processed ${events.length} events in block ${blockNumber}`);
+      // Only log if there are events or if it's a significant block
+      if (events.length > 0) {
+        logger.info(`Contract ${contract.address} processed ${events.length} events in blocks ${fromBlock} to ${toBlock}`);
+      } else if (logs.length > 0) {
+        // Only log when there are logs but no events (for debugging)
+        logger.debug(`Contract ${contract.address} processed ${events.length} events in blocks ${fromBlock} to ${toBlock} (${logs.length} logs found)`);
+      }
+      // Don't log anything when there are no logs and no events
       return events;
 
     } catch (error) {
-      logger.error(`Failed to query logs for contract ${contract.address} in block ${blockNumber}:`, error);
+      logger.error(`Failed to query logs for contract ${contract.address} in blocks ${fromBlock} to ${toBlock}:`, error);
       return events;
     }
   }
@@ -275,14 +263,30 @@ export class BlockWatcher {
     block: ethers.Block,
     contractInterface: ethers.Interface,
     logIndex: number
-  ): Promise<WatchedEvent | null> {
+  ): Promise<any | null> {
     try {
       // Parse the log
       const parsedLog = contractInterface.parseLog(log);
       if (!parsedLog) return null;
 
-      // Create event object
-      const event: WatchedEvent = {
+      // Get transaction receipt for additional gas information
+      let gasInfo = {};
+      try {
+        const receipt = await this.provider.getTransactionReceipt(log.transactionHash!);
+        if (receipt) {
+          gasInfo = {
+            gasUsed: receipt.gasUsed?.toString(),
+            gasPrice: receipt.gasPrice?.toString(),
+            // Note: effectiveGasPrice might not be available in all ethers versions
+            // cumulativeGasUsed: receipt.cumulativeGasUsed?.toString()
+          };
+        }
+      } catch (error) {
+        logger.debug(`Could not fetch transaction receipt for ${log.transactionHash}:`, error);
+      }
+
+      // Create enhanced event object with complete data
+      const event: any = {
         id: `${this.chainConfig.id}-${block.number}-${log.index}`,
         chainId: this.chainConfig.id,
         contractAddress: contract.address,
@@ -295,6 +299,22 @@ export class BlockWatcher {
         eventSignature: parsedLog.signature,
         eventData: log,
         parsedArgs: parsedLog.args,
+        // Enhanced raw log data
+        rawLog: {
+          address: log.address,
+          topics: [...log.topics], // Convert readonly to mutable
+          data: log.data,
+          blockNumber: log.blockNumber?.toString() || '',
+          transactionHash: log.transactionHash || '',
+          transactionIndex: log.transactionIndex?.toString() || '',
+          blockHash: log.blockHash || '',
+          logIndex: log.index?.toString() || '',
+          removed: log.removed || false
+        },
+        // Typed event data based on contract type
+        eventDataTyped: this.createTypedEventData(contract.type, parsedLog.name, parsedLog.args),
+        // Gas information
+        ...gasInfo,
         timestamp: new Date(block.timestamp! * 1000),
         processed: false,
         createdAt: new Date(),
@@ -305,6 +325,136 @@ export class BlockWatcher {
     } catch (error) {
       logger.debug(`Failed to parse log, might be an unknown event:`, error);
       return null;
+    }
+  }
+
+  /**
+   * Create typed event data based on contract type and event name
+   */
+  private createTypedEventData(contractType: string, eventName: string, args: any): any {
+    try {
+      switch (contractType) {
+        case 'erc20':
+          return this.createERC20TypedData(eventName, args);
+        case 'atomic_swap':
+          return this.createAtomicSwapTypedData(eventName, args);
+        case 'registry':
+          return this.createRegistryTypedData(eventName, args);
+        default:
+          return {};
+      }
+    } catch (error) {
+      logger.debug(`Failed to create typed event data for ${contractType}:${eventName}:`, error);
+      return {};
+    }
+  }
+
+  private createERC20TypedData(eventName: string, args: any): any {
+    switch (eventName) {
+      case 'Transfer':
+        return {
+          Transfer: {
+            from: args[0],
+            to: args[1],
+            value: args[2]?.toString()
+          }
+        };
+      case 'Approval':
+        return {
+          Approval: {
+            owner: args[0],
+            spender: args[1],
+            value: args[2]?.toString()
+          }
+        };
+      default:
+        return {};
+    }
+  }
+
+  private createAtomicSwapTypedData(eventName: string, args: any): any {
+    switch (eventName) {
+      case 'Initiated':
+        return {
+          Initiated: {
+            orderID: args[0],
+            secretHash: args[1],
+            amount: args[2]?.toString()
+          }
+        };
+      case 'Redeemed':
+        return {
+          Redeemed: {
+            orderID: args[0],
+            secretHash: args[1],
+            secret: args[2]
+          }
+        };
+      case 'Refunded':
+        return {
+          Refunded: {
+            orderID: args[0]
+          }
+        };
+      case 'EIP712DomainChanged':
+        return {
+          EIP712DomainChanged: {}
+        };
+      default:
+        return {};
+    }
+  }
+
+  private createRegistryTypedData(eventName: string, args: any): any {
+    switch (eventName) {
+      case 'ATOMIC_SWAPAdded':
+        return {
+          ATOMIC_SWAPAdded: {
+            ATOMIC_SWAP: args[0]
+          }
+        };
+      case 'NativeATOMIC_SWAPAdded':
+        return {
+          NativeATOMIC_SWAPAdded: {
+            nativeATOMIC_SWAP: args[0]
+          }
+        };
+      case 'NativeUDACreated':
+        return {
+          NativeUDACreated: {
+            addressNativeUDA: args[0],
+            refundAddress: args[1]
+          }
+        };
+      case 'NativeUDAImplUpdated':
+        return {
+          NativeUDAImplUpdated: {
+            impl: args[0]
+          }
+        };
+      case 'OwnershipTransferred':
+        return {
+          OwnershipTransferred: {
+            previousOwner: args[0],
+            newOwner: args[1]
+          }
+        };
+      case 'UDACreated':
+        return {
+          UDACreated: {
+            addressUDA: args[0],
+            refundAddress: args[1],
+            token: args[2]
+          }
+        };
+      case 'UDAImplUpdated':
+        return {
+          UDAImplUpdated: {
+            impl: args[0]
+          }
+        };
+      default:
+        return {};
     }
   }
 
@@ -322,17 +472,8 @@ export class BlockWatcher {
   }
 
   private async updateStatus(): Promise<void> {
-    const status: WatcherStatus = {
-      chainId: this.chainConfig.id,
-      lastProcessedBlock: this.lastProcessedBlock,
-      currentBlock: this.currentBlock,
-      isRunning: this.isRunning,
-      lastActivity: new Date(),
-      errorCount: this.retryCount,
-      lastError: undefined
-    };
-    
-    // Removed database update as per edit hint
+    // Log current status for monitoring
+    logger.debug(`Status for chain ${this.chainConfig.id}: Last processed block ${this.lastProcessedBlock}, Current block ${this.currentBlock}`);
   }
 
   private sleep(ms: number): Promise<void> {

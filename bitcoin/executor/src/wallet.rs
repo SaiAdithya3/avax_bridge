@@ -38,6 +38,7 @@ impl HTLCWallet {
         let priv_key = PrivateKey::from_slice(&priv_key_bytes, network).unwrap();
         let compressed = CompressedPublicKey::from_private_key(&secp, &priv_key);
         let address = Address::p2wpkh(&compressed.unwrap(), network);
+        println!("address: {:?}", address);
         
         Self {
             secp,
@@ -102,7 +103,7 @@ impl HTLCWallet {
         amount: u64,
     ) -> Result<Transaction, Box<dyn std::error::Error>> {
         let htlc_address = bitcoin_htlc.address()?;
-        
+        println!("address: {:?}", htlc_address);
         // Get UTXOs for funding from sender's address
         let utxos = self.indexer.get_utxos_for_amount(&self.address.to_string(), amount as i64).await?;
         
@@ -315,18 +316,6 @@ impl HTLCWallet {
     
         // Set the witness on the transaction
         tx.input[0].witness = witness;
-    
-        println!("Redemption transaction details:");
-        println!("- Input value: {} sats", utxo.value);
-        println!("- Estimated fee: {} sats", estimated_fee);
-        println!("- Output value: {} sats", output_value);
-        println!("- Dust threshold: {} sats", Self::get_dust_threshold(&recipient_address.script_pubkey()));
-        println!("- Witness stack items: {}", tx.input[0].witness.len());
-        println!("- Signature length: {} bytes", sig_serialized.len());
-        println!("- Secret length: {} bytes", witness_data[1].len());
-        println!("- Script length: {} bytes", witness_data[2].len());
-        println!("- Control block length: {} bytes", witness_data[3].len());
-    
         Ok(tx)
     }
 
@@ -344,16 +333,14 @@ impl HTLCWallet {
         }
         let utxo = &utxos[0];
 
+        if utxo.status.block_height == 0 {
+            return Err("UTXO is not confirmed".into());
+        }
+
         // Get current block height for timelock validation
         let current_height = self.indexer.get_current_block_height().await?;
         let utxo_block_height = utxo.status.block_height;
         let htlc_expiry_height = utxo_block_height + bitcoin_htlc.timelock();
-        
-        println!("Timelock validation:");
-        println!("- UTXO created at block: {}", utxo_block_height);
-        println!("- Timelock blocks: {}", bitcoin_htlc.timelock());
-        println!("- HTLC expires at block: {}", htlc_expiry_height);
-        println!("- Current block height: {}", current_height);
         
         if current_height < htlc_expiry_height {
             let need_to_wait = htlc_expiry_height - current_height;
@@ -454,20 +441,7 @@ impl HTLCWallet {
     
         // Set the witness on the transaction
         tx.input[0].witness = witness;
-    
-        println!("Refund transaction details:");
-        println!("- Input value: {} sats", utxo.value);
-        println!("- Estimated fee: {} sats", estimated_fee);
-        println!("- Output value: {} sats", output_value);
-                 println!("- Transaction locktime: {}", match tx.lock_time {
-             LockTime::Blocks(height) => format!("Block {}", height.to_consensus_u32()),
-             LockTime::Seconds(time) => format!("Time {}", time.to_consensus_u32()),
-         });
-         println!("- HTLC expiry height: {}", htlc_expiry_height);
-        println!("- Input sequence: 0x{:x} ({})", tx.input[0].sequence.0, tx.input[0].sequence.0);
-        println!("- Witness stack items: {}", tx.input[0].witness.len());
-        println!("- Signature length: {} bytes", sig_serialized.len());
-    
+
         Ok(tx)
     }
 
