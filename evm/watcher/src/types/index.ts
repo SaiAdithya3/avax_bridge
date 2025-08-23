@@ -8,7 +8,7 @@ export interface Chain {
 
 export interface ContractConfig {
   address: string;
-  type: 'erc20';
+  type: 'erc20' | 'atomic_swap';
 }
 
 export interface WatchedEvent {
