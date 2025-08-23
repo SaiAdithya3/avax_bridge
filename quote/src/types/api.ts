@@ -28,6 +28,23 @@ export interface QuoteResult {
 // Quote response - can be either success with results or error with message
 export type QuoteResponse = ApiResponse<QuoteResult[] | string>;
 
+// Supported assets types
+export interface SupportedAsset {
+  symbol: string;
+  name: string;
+  decimals: number;
+  cmcId: number;
+}
+
+export interface SupportedChain {
+  id: string;
+  name: string;
+  rpcUrl?: string;
+  assets: SupportedAsset[];
+}
+
+export type SupportedAssetsResponse = ApiResponse<SupportedChain[]>;
+
 // Generic response utility types
 export type SuccessResponse<T> = ApiResponse<T>;
 export type ErrorResponse = ApiResponse<string>;

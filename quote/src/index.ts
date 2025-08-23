@@ -2,10 +2,12 @@ import express from 'express';
 import cors from 'cors';
 import { config } from './config';
 import { QuoteService } from './services/quoteService';
+import { SupportedAssetsService } from './services/supportedAssetsService';
 import { QuoteRequest, createErrorResponse } from './types/api';
 
 const app = express();
 const quoteService = new QuoteService();
+const supportedAssetsService = new SupportedAssetsService();
 
 // Middleware
 app.use(cors());
@@ -14,6 +16,28 @@ app.use(express.json());
 // Health endpoint
 app.get('/health', (_req, res) => {
   res.status(200).send('Online');
+});
+
+// Supported assets endpoint
+app.get('/supported-assets', (req, res) => {
+  try {
+    const { chain } = req.query;
+    
+    let response;
+    if (chain) {
+      // Get assets for specific chain
+      response = supportedAssetsService.getSupportedAssetsForChain(chain as string);
+    } else {
+      // Get all chains with their assets
+      response = supportedAssetsService.getSupportedAssets();
+    }
+    
+    return res.status(200).json(response);
+    
+  } catch (error) {
+    console.error('Error in supported-assets endpoint:', error);
+    return res.status(500).json(createErrorResponse('Internal server error'));
+  }
 });
 
 // Quote endpoint
