@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { config } from './config';
 import { QuoteService } from './services/quoteService';
-import { QuoteRequest, createErrorResponse, createSuccessResponse } from './types/api';
+import { QuoteRequest, createErrorResponse } from './types/api';
 
 const app = express();
 const quoteService = new QuoteService();
@@ -17,7 +17,7 @@ app.get('/health', (_req, res) => {
 });
 
 // Quote endpoint
-app.get('/quote', (req, res) => {
+app.get('/quote', async (req, res) => {
   try {
     const { from, to, amount } = req.query;
     
@@ -37,13 +37,13 @@ app.get('/quote', (req, res) => {
       amount: amount as string
     };
 
-    const quoteResponse = quoteService.generateQuote(quoteRequest);
+    const quoteResponse = await quoteService.generateQuote(quoteRequest);
     
     if (quoteResponse.status === 'Error') {
       return res.status(400).json(quoteResponse);
     }
 
-    return res.status(200).json(createSuccessResponse(quoteResponse));
+    return res.status(200).json(quoteResponse);
     
   } catch (error) {
     console.error('Error in quote endpoint:', error);

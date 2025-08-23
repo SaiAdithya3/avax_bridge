@@ -1,19 +1,27 @@
 import { QuoteRequest, QuoteResponse, QuoteResult, createSuccessResponse, createErrorResponse } from '../types/api';
-import { parseChainAsset, formatAssetDisplay, baseToDisplay } from '../utils/parser';
+import { parseChainAsset, formatAssetDisplay, baseToDisplay, getValidChainAssetCombinations } from '../utils/parser';
 import { config } from '../config';
+import { PriceService } from './priceService';
 
 export class QuoteService {
+  private priceService: PriceService;
+
+  constructor() {
+    this.priceService = new PriceService();
+  }
+
   /**
    * Generate a quote for cross-chain swap
    */
-  generateQuote(request: QuoteRequest): QuoteResponse {
+  async generateQuote(request: QuoteRequest): Promise<QuoteResponse> {
     try {
       // Parse and validate inputs
       const fromAsset = parseChainAsset(request.from);
       const toAsset = parseChainAsset(request.to);
       
       if (!fromAsset || !toAsset) {
-        return createErrorResponse('Invalid from or to asset format');
+        const validCombinations = getValidChainAssetCombinations();
+        return createErrorResponse(`Invalid chain:asset format. Valid combinations: ${validCombinations.join(', ')}`);
       }
 
       // Get asset info
@@ -27,32 +35,28 @@ export class QuoteService {
       // Convert amount to display format
       const fromDisplay = baseToDisplay(request.amount, fromAssetInfo.decimals);
       
-      // Dummy exchange rate (we'll replace this with real CMC data later)
-      const dummyExchangeRate = 15000; // 1 BTC = 15000 AVAX (example)
-      
-      // Calculate destination amount (dummy calculation)
-      const fromAmountBase = BigInt(request.amount);
-      const toAmountBase = fromAmountBase * BigInt(Math.floor(dummyExchangeRate * 1000000)) / BigInt(1000000);
+      // Get real exchange rate and calculate destination amount
+      const calculation = await this.priceService.calculateDestinationAmount(
+        fromAsset.asset,
+        toAsset.asset,
+        request.amount
+      );
       
       // Format destination amount
-      const toDisplay = baseToDisplay(toAmountBase.toString(), toAssetInfo.decimals);
-      
-      // Dummy USD values (we'll replace with real CMC data later)
-      const fromValue = "11.5723"; // Dummy USD value
-      const toValue = "11.5376";   // Dummy USD value
+      const toDisplay = baseToDisplay(calculation.toAmount, toAssetInfo.decimals);
 
       const quoteResult: QuoteResult = {
         source: {
           asset: formatAssetDisplay(fromAsset.chain, fromAsset.asset),
           amount: request.amount,
           display: fromDisplay,
-          value: fromValue
+          value: calculation.fromUsdValue.toFixed(4)
         },
         destination: {
           asset: formatAssetDisplay(toAsset.chain, toAsset.asset),
-          amount: toAmountBase.toString(),
+          amount: calculation.toAmount,
           display: toDisplay,
-          value: toValue
+          value: calculation.toUsdValue.toFixed(4)
         }
       };
 

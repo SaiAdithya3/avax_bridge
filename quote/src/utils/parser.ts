@@ -21,12 +21,39 @@ export function parseChainAsset(input: string): ParsedAsset | null {
     return null;
   }
   
-  // Validate asset exists
+  // Validate asset exists globally
   if (!config.supportedAssets[asset]) {
     return null;
   }
 
+  // Validate asset is supported on the specified chain
+  if (!config.supportedChains[chain].supportedAssets.includes(asset)) {
+    return null;
+  }
+
   return { chain, asset };
+}
+
+/**
+ * Get all valid chain:asset combinations for error messages
+ */
+export function getValidChainAssetCombinations(): string[] {
+  const combinations: string[] = [];
+  
+  for (const [chainId, chain] of Object.entries(config.supportedChains)) {
+    for (const asset of chain.supportedAssets) {
+      combinations.push(`${chainId}:${asset}`);
+    }
+  }
+  
+  return combinations;
+}
+
+/**
+ * Validate if a chain:asset combination is supported
+ */
+export function isValidChainAsset(chain: string, asset: string): boolean {
+  return config.supportedChains[chain]?.supportedAssets.includes(asset) ?? false;
 }
 
 /**
@@ -43,16 +70,17 @@ export function formatAssetDisplay(chain: string, asset: string): string {
  * Convert base amount to display amount
  */
 export function baseToDisplay(amount: string, decimals: number): string {
-  const baseAmount = BigInt(amount);
-  const divisor = BigInt(10 ** decimals);
-  
-  const whole = baseAmount / divisor;
-  const fraction = baseAmount % divisor;
-  
-  if (fraction === 0n) {
-    return whole.toString();
+  try {
+    // Handle very large numbers by using Number first, then converting to string
+    const baseAmount = parseFloat(amount);
+    const divisor = Math.pow(10, decimals);
+    
+    const result = baseAmount / divisor;
+    
+    // Format with proper decimal places, removing trailing zeros
+    return result.toFixed(decimals).replace(/\.?0+$/, '');
+  } catch (error) {
+    console.error('Error converting base to display:', error);
+    return '0';
   }
-  
-  const fractionStr = fraction.toString().padStart(decimals, '0');
-  return `${whole}.${fractionStr}`;
 }

@@ -9,6 +9,7 @@ export interface Chain {
   id: string;
   name: string;
   rpcUrl?: string;
+  supportedAssets: string[]; // Array of asset keys supported on this chain
 }
 
 export interface Config {
@@ -22,9 +23,9 @@ export interface Config {
 }
 
 export const config: Config = {
-  port: parseInt(process.env.PORT || '3000'),
+  port: 3000,
   coinMarketCap: {
-    apiKey: process.env.CMC_API_KEY || '',
+    apiKey: '2e5c7e6b-695f-43df-b6e9-cd46ced63847',
     baseUrl: 'https://pro-api.coinmarketcap.com/v1'
   },
   supportedAssets: {
@@ -51,16 +52,19 @@ export const config: Config = {
     avalanche_testnet: {
       id: 'avalanche_testnet',
       name: 'Avalanche Testnet',
-      rpcUrl: 'https://api.avax-test.network/ext/bc/C/rpc'
+      rpcUrl: 'https://api.avax-test.network/ext/bc/C/rpc',
+      supportedAssets: ['avax', 'usdt'] // AVAX and USDT are native to Avalanche
     },
     bitcoin_testnet: {
       id: 'bitcoin_testnet',
-      name: 'Bitcoin Testnet'
+      name: 'Bitcoin Testnet',
+      supportedAssets: ['bitcoin'] // Only Bitcoin on Bitcoin chain
     },
     arbitrum_sepolia: {
       id: 'arbitrum_sepolia',
       name: 'Arbitrum Sepolia',
-      rpcUrl: 'https://sepolia-rollup.arbitrum.io/rpc'
+      rpcUrl: 'https://sepolia-rollup.arbitrum.io/rpc',
+      supportedAssets: ['bitcoin', 'usdt'] // Bitcoin (wrapped) and USDT on Arbitrum
     }
   }
 };
