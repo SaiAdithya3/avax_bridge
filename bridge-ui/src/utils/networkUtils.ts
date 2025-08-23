@@ -43,22 +43,19 @@ export const switchOrAddNetwork = async (
   chain: EvmChain,
   walletClient: WalletClient,
 ): Promise<AsyncResult<{ message: string; walletClient: WalletClient }, string>> => {
+  console.log("chain", chain)
   const chainID = evmToViemChainMap[chain];
+  console.log("chainID", chainID)
   const currentChainId = await walletClient.getChainId();
-  
+  console.log("currentChainId", currentChainId)
   if (chainID) {
     try {
-      if (chainID.id === currentChainId) {
-        return Ok({ message: "Already on the network", walletClient });
-      }
-      
       await walletClient.switchChain({ id: chainID.id });
       const newWalletClient = createWalletClient({
         account: walletClient.account,
         chain: chainID,
         transport: custom(walletClient.transport),
       });
-
       return Ok({
         message: "Switched chain",
         walletClient: newWalletClient as WalletClient,

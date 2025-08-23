@@ -21,11 +21,11 @@ export type AssetOption = {
   chainId: string;
   chainName: string;
   asset: Asset;
-  value: string; // format: chainId:assetSymbol
+  value: string;
 };
 
 export type QuoteLeg = {
-  asset: string; // e.g. "bitcoin:btc"
+  asset: string; 
   amount: string;
   display: string;
   value: string;
@@ -70,7 +70,7 @@ function getAssetKeyFromSymbol(symbol: string): string {
   const map: Record<string, string> = {
     btc: 'bitcoin',
     avax: 'avax',
-    usdt: 'usdt',
+    usdc: 'usdc',
   };
   return map[symbol.toLowerCase()] || symbol.toLowerCase();
 }
