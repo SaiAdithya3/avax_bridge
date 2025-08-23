@@ -167,7 +167,8 @@ impl OrderService {
             initiate_block_number: None, // Empty at beginning
             redeem_block_number: None, // Empty at beginning
             refund_block_number: None, // Empty at beginning
-            deposit_address : Some(source_deposit_address)
+            deposit_address : Some(source_deposit_address),
+            has_deposit: false
         };
         
         // Generate destination swap ID based on chain type
@@ -212,7 +213,8 @@ impl OrderService {
             initiate_block_number: None, // Empty at beginning
             redeem_block_number: None, // Empty at beginning
             refund_block_number: None, // Empty at beginning
-            deposit_address : Some(destination_deposit_address)
+            deposit_address : Some(destination_deposit_address),
+            has_deposit: false
         };
         
         // Create the complete MatchedOrder
