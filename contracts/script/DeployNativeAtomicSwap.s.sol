@@ -9,7 +9,7 @@ contract DeployNativeAtomicSwap is Script {
         // uint256 pk = vm.envUint("PRIVATE_KEY");
         vm.startBroadcast();
 
-        bytes32 salt = keccak256(abi.encode("gardenfinance_native_1_stage"));
+        bytes32 salt = keccak256(abi.encode("NATIVE_ATOMIC_SWAP"));
         // this is for sepolia testnet for aave
         address x = address(new NativeATOMIC_SWAP{salt: salt}());
         console.log("The address is ", x);

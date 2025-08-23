@@ -37,7 +37,7 @@ contract ATOMIC_SWAPRegistry is Ownable {
     address public nativeATOMIC_SWAP;
     address public ATOMIC_SWAP;
 
-    constructor(address owner) Ownable(owner) {
+    constructor() Ownable(0x1B150538E943F00127929f7eeB65754f7beB0B6d) {
         implUDA = address(new UniqueDepositAddress());
         implNativeUDA = address(new NativeUniqueDepositAddress());
     }
