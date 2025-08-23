@@ -9,12 +9,7 @@ import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-/**
- * @title ATOMIC_SWAPRegistry
- * @dev   This contract manages ATOMIC_SWAPs (Hash Time-Locked Contracts) and Unique Deposit Addresses (UDAs) for native and ERC20 tokens.
- *        It allows the deployment and management of ATOMIC_SWAPs for both native ETH and ERC20 tokens, as well as managing the associated UDAs.
- *        The contract also enables the updating of implementation addresses for the UDAs and ATOMIC_SWAPs.
- */
+
 contract ATOMIC_SWAPRegistry is Ownable {
     using Clones for address;
     using Address for address;
@@ -44,6 +39,7 @@ contract ATOMIC_SWAPRegistry is Ownable {
 
     constructor(address owner) Ownable(owner) {
         implUDA = address(new UniqueDepositAddress());
+        implNativeUDA = address(new NativeUniqueDepositAddress());
     }
 
     modifier safeParams(address refundAddress, address redeemer, uint256 timelock, uint256 amount) {
@@ -81,8 +77,8 @@ contract ATOMIC_SWAPRegistry is Ownable {
         address refundAddress,
         address redeemer,
         uint256 timelock,
-        bytes32 secretHash,
-        uint256 amount
+        uint256 amount,
+        bytes32 secretHash
     ) external returns (address) {
         require(ATOMIC_SWAP != address(0), ATOMIC_SWAPRegistry__NoATOMIC_SWAPFoundForThisToken());
 
@@ -110,8 +106,8 @@ contract ATOMIC_SWAPRegistry is Ownable {
         address refundAddress,
         address redeemer,
         uint256 timelock,
-        bytes32 secretHash,
-        uint256 amount
+        uint256 amount,
+        bytes32 secretHash
     ) external view safeParams(refundAddress, redeemer, timelock, amount) returns (address) {
         require(ATOMIC_SWAP != address(0), ATOMIC_SWAPRegistry__NoATOMIC_SWAPFoundForThisToken());
         return implUDA.predictDeterministicAddressWithImmutableArgs(
@@ -124,8 +120,8 @@ contract ATOMIC_SWAPRegistry is Ownable {
         address refundAddress,
         address redeemer,
         uint256 timelock,
-        bytes32 secretHash,
-        uint256 amount
+        uint256 amount,
+        bytes32 secretHash
     ) external returns (address) {
         require(nativeATOMIC_SWAP != address(0), ATOMIC_SWAPRegistry__NoNativeATOMIC_SWAPFound());
         bytes memory encodedArgs =
@@ -135,7 +131,7 @@ contract ATOMIC_SWAPRegistry is Ownable {
         address _implNativeUDA = implNativeUDA;
 
         // getting Native swap address
-        address addr = implNativeUDA.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
+        address addr = _implNativeUDA.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
         require(address(addr).balance >= amount, ATOMIC_SWAPRegistry__InsufficientFundsDeposited());
 
         if (addr.code.length == 0) {
@@ -146,21 +142,12 @@ contract ATOMIC_SWAPRegistry is Ownable {
         return addr;
     }
 
-    /**
-     * @dev     calculate the counterfactual address of this account as it would be returned by createAccount()
-     * @notice  this address must be used to deposit the funds into, before calling the createNativeSwapAddress() function
-     * @param   refundAddress   Address to recover accidental funds sent to the UDA
-     * @param   redeemer        Redeemer's address to be used for the swap
-     * @param   timelock        The timelock to be used for the swap
-     * @param   secretHash      The secret hash to lock the funds
-     * @param   amount          The amount to be used for the swap
-     */
     function getNativeAddress(
         address refundAddress,
         address redeemer,
         uint256 timelock,
-        bytes32 secretHash,
-        uint256 amount
+        uint256 amount,
+        bytes32 secretHash
     ) external view safeParams(refundAddress, redeemer, timelock, amount) returns (address) {
         require(nativeATOMIC_SWAP != address(0), ATOMIC_SWAPRegistry__NoNativeATOMIC_SWAPFound());
         return implNativeUDA.predictDeterministicAddressWithImmutableArgs(
