@@ -1,0 +1,33 @@
+{
+  "name": "evm-executor",
+  "version": "1.0.0",
+  "description": "EVM executor for cross-chain bridge operations",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "watch": "tsc --watch",
+    "test-setup": "ts-node test-setup.ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.0.0",
+    "mongodb": "^6.0.0",
+    "neverthrow": "^6.0.0",
+    "viem": "^2.0.0",
+    "wagmi": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.0.0"
+  },
+  "keywords": [
+    "evm",
+    "bridge",
+    "executor",
+    "blockchain"
+  ],
+  "author": "",
+  "license": "MIT"
+}
