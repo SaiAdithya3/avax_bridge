@@ -29,7 +29,7 @@ pub struct WalletSettings {
 
 impl Settings {
     pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
-        let config_path = Path::new("src/Settings.toml");
+        let config_path = Path::new("Settings.toml");
         
         if !config_path.exists() {
             return Err("Settings.toml file not found".into());
