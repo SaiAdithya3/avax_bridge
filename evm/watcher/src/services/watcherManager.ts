@@ -1,23 +1,19 @@
 import { BlockWatcher } from './blockWatcher';
-import { DatabaseService } from './database';
 import { EventHandlerService } from './eventHandler';
-import { ChainConfig, WatcherOptions } from '../types';
+import { Chain, WatcherOptions } from '../types';
 import { logger } from '../utils/logger';
 
 export class WatcherManager {
   private watchers: Map<string, BlockWatcher> = new Map();
-  private database: DatabaseService;
   private eventHandler: EventHandlerService;
   private isRunning: boolean = false;
   private options: WatcherOptions;
 
   constructor(
-    private chainConfigs: ChainConfig[],
-    database: DatabaseService,
+    private chainConfigs: Chain[],
     eventHandler: EventHandlerService,
     options: WatcherOptions = {}
   ) {
-    this.database = database;
     this.eventHandler = eventHandler;
     this.options = options;
   }
@@ -40,7 +36,6 @@ export class WatcherManager {
 
         const watcher = new BlockWatcher(
           chainConfig,
-          this.database,
           this.eventHandler,
           this.options
         );
@@ -104,7 +99,7 @@ export class WatcherManager {
     await this.start();
   }
 
-  async addChain(chainConfig: ChainConfig): Promise<void> {
+  async addChain(chainConfig: Chain): Promise<void> {
     try {
       logger.info(`Adding new chain: ${chainConfig.id}`);
       
@@ -119,7 +114,6 @@ export class WatcherManager {
       if (chainConfig.contracts.length > 0) {
         const watcher = new BlockWatcher(
           chainConfig,
-          this.database,
           this.eventHandler,
           this.options
         );
@@ -177,7 +171,6 @@ export class WatcherManager {
           // Create new watcher with updated config
           const newWatcher = new BlockWatcher(
             chainConfig,
-            this.database,
             this.eventHandler,
             this.options
           );

@@ -27,7 +27,6 @@ export class EventHandlerService {
 
   registerHandler(eventName: string, handler: (event: WatchedEvent) => Promise<void>): void {
     this.handlers.set(eventName, { eventName, handler });
-    logger.info(`Registered handler for event: ${eventName}`);
   }
 
   async handleEvent(event: WatchedEvent): Promise<void> {
@@ -35,7 +34,7 @@ export class EventHandlerService {
       const handler = this.handlers.get(event.eventName);
       
       if (handler) {
-        logger.info(`Processing event: ${event.eventName} from contract ${event.contractName} at block ${event.blockNumber}`);
+        logger.info(`Processing event: ${event.eventName} from contract ${event.contractAddress} (${event.contractType}) at block ${event.blockNumber}`);
         await handler.handler(event);
         logger.info(`Successfully processed event: ${event.eventName}`);
       } else {
@@ -106,7 +105,7 @@ export class EventHandlerService {
   }
 
   private async handleGenericEvent(event: WatchedEvent): Promise<void> {
-    logger.info(`[GENERIC] Event: ${event.eventName}, Contract: ${event.contractName}, Block: ${event.blockNumber}`);
+    logger.info(`[GENERIC] Event: ${event.eventName}, Contract: ${event.contractAddress} (${event.contractType}), Block: ${event.blockNumber}`);
     logger.debug(`Event data:`, event.eventData);
     // TODO: Implement generic event handling logic
   }

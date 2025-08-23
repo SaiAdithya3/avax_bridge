@@ -1,14 +1,12 @@
 import { ethers } from 'ethers';
-import { ChainConfig, ContractConfig, WatchedEvent, BlockInfo, WatcherStatus, WatcherOptions } from '../types';
-import { DatabaseService } from './database';
+import { Chain, ContractConfig, WatchedEvent, WatcherStatus, WatcherOptions } from '../types';
 import { EventHandlerService } from './eventHandler';
 import { AbiLoader } from './abiLoader';
 import { logger } from '../utils/logger';
 
 export class BlockWatcher {
   private provider: ethers.Provider;
-  private chainConfig: ChainConfig;
-  private database: DatabaseService;
+  private chainConfig: Chain;
   private eventHandler: EventHandlerService;
   private isRunning: boolean = false;
   private currentBlock: number = 0;
@@ -19,13 +17,11 @@ export class BlockWatcher {
   private retryDelay: number;
 
   constructor(
-    chainConfig: ChainConfig,
-    database: DatabaseService,
+    chainConfig: Chain,
     eventHandler: EventHandlerService,
     options: WatcherOptions = {}
   ) {
     this.chainConfig = chainConfig;
-    this.database = database;
     this.eventHandler = eventHandler;
     
     this.options = {
@@ -49,19 +45,16 @@ export class BlockWatcher {
     }
 
     try {
-      logger.info(`Starting watcher for chain: ${this.chainConfig.name} (${this.chainConfig.id})`);
+      logger.info(`Starting watcher for chain: ${this.chainConfig.id}`);
+      logger.info(`Chain ${this.chainConfig.id} has ${this.chainConfig.contracts.length} contracts to monitor`);
       
-      // Determine start block from contracts configuration
-      const startBlocks = this.chainConfig.contracts
-        .map(contract => contract.startBlock)
-        .filter(block => block !== undefined) as number[];
-      
-      // Use the minimum start block from contracts, or current block if none specified
-      if (startBlocks.length > 0) {
-        this.lastProcessedBlock = Math.min(...startBlocks) - 1; // Start one block before
-      } else {
-        this.lastProcessedBlock = await this.provider.getBlockNumber() - 1; // Start from current block
+      // Log all contracts being monitored
+      for (const contract of this.chainConfig.contracts) {
+        logger.info(`Monitoring contract: ${contract.address} (${contract.type})`);
       }
+      
+      // Use the chain's start block
+      this.lastProcessedBlock = this.chainConfig.startBlock - 1; // Start one block before
       
       // Get current block from blockchain
       this.currentBlock = await this.provider.getBlockNumber();
@@ -86,6 +79,9 @@ export class BlockWatcher {
   private async watchBlocks(): Promise<void> {
     while (this.isRunning) {
       try {
+        // Check if we should stop before each iteration
+        if (!this.isRunning) break;
+        
         // Get current block number
         this.currentBlock = await this.provider.getBlockNumber();
         
@@ -97,72 +93,129 @@ export class BlockWatcher {
         // Update status
         await this.updateStatus();
         
-        // Wait before next poll
-        await this.sleep(this.options.pollInterval!);
+        // Wait before next poll, but check isRunning periodically
+        await this.sleepWithInterrupt(this.options.pollInterval!);
         
       } catch (error) {
+        if (!this.isRunning) break; // Exit if we're stopping
         logger.error(`Error in block watching loop for chain ${this.chainConfig.id}:`, error);
         await this.handleError(error);
       }
     }
+    logger.info(`Block watching loop stopped for chain: ${this.chainConfig.id}`);
   }
 
   private async processBlocks(fromBlock: number, toBlock: number): Promise<void> {
     logger.info(`Processing blocks ${fromBlock} to ${toBlock} for chain ${this.chainConfig.id}`);
     
-    for (let blockNumber = fromBlock; blockNumber <= toBlock && this.isRunning; blockNumber++) {
+    let totalEvents = 0;
+    let processedBlocks = 0;
+    
+    // Process blocks in batches using maxBlockSpan
+    for (let batchStart = fromBlock; batchStart <= toBlock && this.isRunning; batchStart += this.chainConfig.maxBlockSpan) {
+      const batchEnd = Math.min(batchStart + this.chainConfig.maxBlockSpan - 1, toBlock);
+      
+      logger.info(`Processing batch: blocks ${batchStart} to ${batchEnd} for chain ${this.chainConfig.id}`);
+      
       try {
-        await this.processBlock(blockNumber);
-        this.lastProcessedBlock = blockNumber;
+        // Process the entire batch
+        const batchEvents = await this.processBlockBatch(batchStart, batchEnd);
+        totalEvents += batchEvents;
+        
+        // Update last processed block to the end of this batch
+        this.lastProcessedBlock = batchEnd;
         this.retryCount = 0; // Reset retry count on success
+        processedBlocks += (batchEnd - batchStart + 1);
+        
+        logger.info(`Successfully processed batch ${batchStart}-${batchEnd}, found ${batchEvents} events`);
         
       } catch (error) {
-        logger.error(`Failed to process block ${blockNumber} for chain ${this.chainConfig.id}:`, error);
+        logger.error(`Failed to process batch ${batchStart}-${batchEnd} for chain ${this.chainConfig.id}:`, error);
         
-        // Retry logic - don't move forward until block is processed
+        // Retry logic - don't move forward until batch is processed
         if (this.retryCount < this.maxRetries) {
           this.retryCount++;
-          logger.info(`Retrying block ${blockNumber} (attempt ${this.retryCount}/${this.maxRetries})`);
+          logger.info(`Retrying batch ${batchStart}-${batchEnd} (attempt ${this.retryCount}/${this.maxRetries})`);
           await this.sleep(this.retryDelay);
-          blockNumber--; // Retry the same block
+          batchStart -= this.chainConfig.maxBlockSpan; // Retry the same batch
         } else {
-          logger.error(`Max retries exceeded for block ${blockNumber}, stopping watcher`);
+          logger.error(`Max retries exceeded for batch ${batchStart}-${batchEnd}, stopping watcher`);
           await this.stop();
-          throw new Error(`Failed to process block ${blockNumber} after ${this.maxRetries} retries`);
+          throw new Error(`Failed to process batch ${batchStart}-${batchEnd} after ${this.maxRetries} retries`);
         }
       }
     }
+    
+    logger.info(`Completed processing ${processedBlocks} blocks for chain ${this.chainConfig.id}, total events: ${totalEvents}`);
   }
 
-  private async processBlock(blockNumber: number): Promise<void> {
-    logger.debug(`Processing block ${blockNumber} for chain ${this.chainConfig.id}`);
+  private async processBlockBatch(fromBlock: number, toBlock: number): Promise<number> {
+    let totalEvents = 0;
     
-    // Get block details
-    const block = await this.provider.getBlock(blockNumber, true);
-    if (!block) {
-      throw new Error(`Block ${blockNumber} not found`);
-    }
-
-    // Process events from all contracts
-    const allEvents: WatchedEvent[] = [];
-    
-    for (const contract of this.chainConfig.contracts) {
+    // Process all blocks in the batch
+    for (let blockNumber = fromBlock; blockNumber <= toBlock && this.isRunning; blockNumber++) {
       try {
-        const contractEvents = await this.processContractEvents(contract, block, blockNumber);
-        allEvents.push(...contractEvents);
+        const blockEvents = await this.processBlock(blockNumber);
+        totalEvents += blockEvents;
       } catch (error) {
-        logger.error(`Failed to process contract ${contract.name} events for block ${blockNumber}:`, error);
-        // Continue with other contracts
+        logger.error(`Failed to process block ${blockNumber} in batch:`, error);
+        // Continue with other blocks in the batch, but log the error
       }
     }
-
-    // Save all events
-    if (allEvents.length > 0) {
-      await this.database.saveEvents(allEvents);
-      logger.info(`Saved ${allEvents.length} events from block ${blockNumber}`);
-    }
     
-    logger.debug(`Successfully processed block ${blockNumber} with ${allEvents.length} events`);
+    return totalEvents;
+  }
+
+  private async processBlock(blockNumber: number): Promise<number> {
+    try {
+      logger.debug(`Processing block ${blockNumber}`);
+      
+      const block = await this.provider.getBlock(blockNumber);
+      if (!block) {
+        logger.warn(`Block ${blockNumber} not found`);
+        return 0;
+      }
+
+      const allEvents: WatchedEvent[] = [];
+      
+      // Process each contract
+      for (const contract of this.chainConfig.contracts) {
+        const contractEvents = await this.processContractEvents(contract, block, blockNumber);
+        allEvents.push(...contractEvents);
+      }
+
+      // Handle events instead of saving to database
+      if (allEvents.length > 0) {
+        logger.info(`Block ${blockNumber}: Found ${allEvents.length} events, processing them...`);
+        for (const event of allEvents) {
+          await this.handleEvent(event);
+        }
+      } else {
+        logger.debug(`Block ${blockNumber}: No events found`);
+      }
+
+      this.lastProcessedBlock = blockNumber;
+      logger.debug(`Successfully processed block ${blockNumber}`);
+      
+      return allEvents.length; // Return the number of events found
+      
+    } catch (error) {
+      logger.error(`Failed to process block ${blockNumber}:`, error);
+      throw error;
+    }
+  }
+
+  private async handleEvent(event: WatchedEvent): Promise<void> {
+    // Placeholder event handler - just log the event type
+    logger.info(`[EVENT] Type: ${event.eventName}, Contract: ${event.contractAddress} (${event.contractType}), Block: ${event.blockNumber}, Tx: ${event.transactionHash}`);
+    
+    // TODO: Add your custom event handling logic here
+    // For example:
+    // - Process Transfer events
+    // - Handle Approval events  
+    // - Send notifications
+    // - Update internal state
+    // - etc.
   }
 
   private async processContractEvents(
@@ -171,52 +224,55 @@ export class BlockWatcher {
     blockNumber: number
   ): Promise<WatchedEvent[]> {
     const events: WatchedEvent[] = [];
-    
-    if (!block.transactions || block.transactions.length === 0) {
-      return events;
-    }
 
-    // Load ABI for contract type and create interface
-    const abi = AbiLoader.loadAbi(contract.type);
-    const contractInterface = new ethers.Interface(abi);
-    
-    // Process each transaction in the block
-    for (const tx of block.transactions) {
-      if (typeof tx === 'string') continue; // Skip if just hash
+    try {
+      // Load ABI for contract type and create interface
+      const abi = AbiLoader.loadAbi(contract.type);
+      const contractInterface = new ethers.Interface(abi);
       
-      // Type assertion for transaction object
-      const transaction = tx as ethers.TransactionResponse;
-      const receipt = await this.provider.getTransactionReceipt(transaction.hash);
-      if (!receipt || !receipt.logs) continue;
+      // Log which events we're watching for this contract type
+      const availableEvents = AbiLoader.getEventsFromAbi(contract.type);
+      logger.debug(`Contract ${contract.address} (${contract.type}) - watching for events: ${availableEvents.join(', ')}`);
 
-      // Filter logs for this contract
-      const contractLogs = receipt.logs.filter(log => 
-        log.address.toLowerCase() === contract.address.toLowerCase()
-      );
+      // Query logs directly from the contract for this specific block
+      const logs = await this.provider.getLogs({
+        address: contract.address,
+        fromBlock: blockNumber,
+        toBlock: blockNumber
+      });
+
+      logger.debug(`Found ${logs.length} logs for contract ${contract.address} in block ${blockNumber}`);
 
       // Process each log
-      for (let i = 0; i < contractLogs.length; i++) {
-        const log = contractLogs[i];
+      for (let i = 0; i < logs.length; i++) {
+        const log = logs[i];
         try {
-          const event = await this.parseLogToEvent(log, contract, block, receipt, contractInterface, i);
+          const event = await this.parseLogToEvent(log, contract, block, contractInterface, i);
           if (event) {
             events.push(event);
+            logger.debug(`Successfully parsed event ${event.eventName} from log ${i} in block ${blockNumber}`);
+          } else {
+            logger.debug(`Failed to parse log ${i} in block ${blockNumber} - might be unknown event`);
           }
         } catch (error) {
-          logger.error(`Failed to parse log for contract ${contract.name}:`, error);
+          logger.error(`Failed to parse log for contract ${contract.address}:`, error);
           // Continue with other logs
         }
       }
-    }
 
-    return events;
+      logger.info(`Contract ${contract.address} processed ${events.length} events in block ${blockNumber}`);
+      return events;
+
+    } catch (error) {
+      logger.error(`Failed to query logs for contract ${contract.address} in block ${blockNumber}:`, error);
+      return events;
+    }
   }
 
   private async parseLogToEvent(
     log: ethers.Log,
     contract: ContractConfig,
     block: ethers.Block,
-    receipt: ethers.TransactionReceipt,
     contractInterface: ethers.Interface,
     logIndex: number
   ): Promise<WatchedEvent | null> {
@@ -227,14 +283,14 @@ export class BlockWatcher {
 
       // Create event object
       const event: WatchedEvent = {
-        id: `${this.chainConfig.id}-${block.number}-${logIndex}`,
+        id: `${this.chainConfig.id}-${block.number}-${log.index}`,
         chainId: this.chainConfig.id,
         contractAddress: contract.address,
-        contractName: contract.name,
+        contractType: contract.type,
         blockNumber: block.number!,
         blockHash: block.hash!,
-        transactionHash: receipt.hash,
-        logIndex: logIndex,
+        transactionHash: log.transactionHash!,
+        logIndex: log.index,
         eventName: parsedLog.name,
         eventSignature: parsedLog.signature,
         eventData: log,
@@ -276,11 +332,18 @@ export class BlockWatcher {
       lastError: undefined
     };
     
-    await this.database.updateWatcherStatus(status);
+    // Removed database update as per edit hint
   }
 
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  private async sleepWithInterrupt(ms: number): Promise<void> {
+    const start = Date.now();
+    while (Date.now() - start < ms && this.isRunning) {
+      await new Promise(resolve => setTimeout(resolve, 100)); // Check every 100ms
+    }
   }
 
   // Public methods for monitoring

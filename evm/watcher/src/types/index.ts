@@ -1,26 +1,21 @@
-export interface ChainConfig {
+export interface Chain {
   id: string;
-  name: string;
+  startBlock: number;
   rpcUrl: string;
-  chainId: number;
-  blockTime: number; // in seconds
-  confirmations: number;
+  maxBlockSpan: number; // Maximum blocks to process in each batch
   contracts: ContractConfig[];
 }
 
 export interface ContractConfig {
   address: string;
-  name: string;
-  type: 'erc20'; // Contract type determines which ABI to use
-  startBlock?: number;
-  events: string[]; // event signatures to watch
+  type: 'erc20';
 }
 
 export interface WatchedEvent {
   id: string;
   chainId: string;
   contractAddress: string;
-  contractName: string;
+  contractType: string;
   blockNumber: number;
   blockHash: string;
   transactionHash: string;
@@ -31,16 +26,6 @@ export interface WatchedEvent {
   parsedArgs: any;
   timestamp: Date;
   processed: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface BlockInfo {
-  number: number;
-  hash: string;
-  timestamp: number;
-  processed: boolean;
-  eventCount: number;
   createdAt: Date;
   updatedAt: Date;
 }

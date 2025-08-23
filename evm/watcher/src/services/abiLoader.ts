@@ -34,8 +34,6 @@ export class AbiLoader {
 
       // Cache the ABI
       this.abiCache.set(contractType, abi);
-      
-      logger.info(`Loaded ABI for contract type: ${contractType}`);
       return abi;
       
     } catch (error) {
@@ -80,6 +78,18 @@ export class AbiLoader {
     } catch (error) {
       logger.error(`Failed to get events for contract type ${contractType}:`, error);
       return [];
+    }
+  }
+
+  /**
+   * Get default events for a contract type (for ERC20, always Transfer and Approval)
+   */
+  static getDefaultEvents(contractType: ContractType): string[] {
+    switch (contractType) {
+      case 'erc20':
+        return ['Transfer', 'Approval'];
+      default:
+        return [];
     }
   }
 
