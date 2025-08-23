@@ -2,16 +2,16 @@
 pragma solidity 0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
-import {ATOMIC_SWAP} from "../src/AtomicSwap.sol";
+import {WrappedBitcoin} from "../src/Token.sol";
 
-contract DeployAtomicSwapScript is Script {
+contract DeployWrappedBitcoin is Script {
     function run() external {
         // uint256 pk = vm.envUint("PRIVATE_KEY");
         vm.startBroadcast();
 
-        bytes32 salt = keccak256(abi.encode("ATOMIC_SWAP"));
+        bytes32 salt = keccak256(abi.encode("WrappedBitcoin"));
         // this is for sepolia testnet for aave
-        address x = address(new ATOMIC_SWAP{salt: salt}());
+        address x = address(new WrappedBitcoin{salt: salt}());
         console.log("The address is ", x);
 
         vm.stopBroadcast();

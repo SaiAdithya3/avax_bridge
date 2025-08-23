@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import {ATOMIC_SWAP} from "../src/AtomicSwap.sol";
 import {NativeATOMIC_SWAP} from "../src/NativeAtomicSwap.sol";
 import {ATOMIC_SWAPRegistry} from "../src/AtomicSwapRegistry.sol";
-import {USDC} from "../src/Token.sol";
+import {Token} from "../src/Token.sol";
 import {Test} from "forge-std/Test.sol";
 import {console} from "forge-std/console.sol";
 
@@ -12,8 +12,8 @@ contract TestATOMIC_SWAP is Test {
     ATOMIC_SWAP public atomicSwap;
     NativeATOMIC_SWAP public nativeAtomicSwap;
     ATOMIC_SWAPRegistry public registry;
-    USDC public usdc;
-    USDC public usdcClone;
+    Token public usdc;
+    Token public usdcClone;
 
     address public owner = makeAddr("owner");
     address public initiator = makeAddr("initiator");
@@ -24,12 +24,12 @@ contract TestATOMIC_SWAP is Test {
         vm.startPrank(owner);
         atomicSwap = new ATOMIC_SWAP();
         nativeAtomicSwap = new NativeATOMIC_SWAP();
-        registry = new ATOMIC_SWAPRegistry(owner);
+        registry = new ATOMIC_SWAPRegistry();
         registry.addATOMIC_SWAP(address(atomicSwap));
         registry.addNativeATOMIC_SWAP(address(nativeAtomicSwap));
 
-        usdc = new USDC();
-        usdcClone = new USDC();
+        usdc = new Token();
+        usdcClone = new Token();
 
         usdc.transfer(initiator, 10000 * 10**18);
         usdcClone.transfer(initiator, 10000 * 10**18);
@@ -45,6 +45,9 @@ contract TestATOMIC_SWAP is Test {
         usdcClone.approve(address(atomicSwap), type(uint256).max);
         atomicSwap.initiate(address(usdcClone), redeemer, 100 , 10e17, sha256("secret"));
 
+        assert(usdc.balanceOf(address(atomicSwap)) == 10e18);
+        assert(usdcClone.balanceOf(address(atomicSwap)) == 10e17);
+
         vm.stopPrank();
     }
 
@@ -52,6 +55,7 @@ contract TestATOMIC_SWAP is Test {
         test_Initiate();
         vm.startPrank(redeemer);
         atomicSwap.redeem(0x1d955409a8e171056240cfb86eb5063128b9765e58a306763e0d79f0bc98d4b5, abi.encodePacked("secret"));
+
 
         vm.stopPrank();
     }

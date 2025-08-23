@@ -6,21 +6,17 @@ import {ATOMIC_SWAPRegistry} from "../src/AtomicSwapRegistry.sol";
 import {NativeUniqueDepositAddress} from "../src/UDA.sol";
 
 contract DeployAtomicSwapRegistryScript is Script {
-    function run(address owner, address changeOwner) external {
+    function run() external {
         // uint256 pk = vm.envUint("PRIVATE_KEY");
         vm.startBroadcast();
 
-        bytes32 salt = keccak256(abi.encode("gardenfinance_eth_ATOMIC_SWAPRegistry_2"));
+        bytes32 salt = keccak256(abi.encode("ATOMIC_SWAPRegistry"));
         // this is for sepolia testnet for aave
-        address x = address(new ATOMIC_SWAPRegistry{salt: salt}(owner));
-        console.log("The address of Registry is ", x);
+        ATOMIC_SWAPRegistry x = (new ATOMIC_SWAPRegistry{salt: salt}());
+        console.log("The address of Registry is ", address(x));
 
-        address nativeUDA = address(new NativeUniqueDepositAddress());
-        ATOMIC_SWAPRegistry(x).setImplNativeUDA(address(nativeUDA));
-
-        ATOMIC_SWAPRegistry(x).transferOwnership(changeOwner);
-
-        console.log("The address of Native UDA is ", nativeUDA);
+        x.addATOMIC_SWAP(0x6B1c656ad724C246049EF586Fa35D217A8db13A0);
+        // x.addNativeATOMIC_SWAP();
 
         vm.stopBroadcast();
     }
