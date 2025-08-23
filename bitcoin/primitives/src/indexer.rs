@@ -48,6 +48,18 @@ impl SimpleIndexer {
         )
     }
 
+    pub async fn get_current_block_height(&self) -> Result<u64> {
+        let url = format!("{}/blocks/tip/height", self.url);
+        
+        let response = self.client.get(&url).send().await?;
+        if response.status().is_success() {
+            let height: u64 = response.text().await?.parse()?;
+            Ok(height)
+        } else {
+            Err(anyhow::anyhow!("Failed to get current block height: {}", response.status()))
+        }
+    }
+
     /// Gets address information including chain and mempool statistics
     pub async fn get_address_info(&self, address: &str) -> Result<AddressInfo> {
         let url = format!("{}/address/{}", &self.url, address);

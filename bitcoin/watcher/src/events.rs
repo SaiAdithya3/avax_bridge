@@ -12,15 +12,18 @@ pub enum BitcoinEvent {
         tx_hash: String,
         amount_sats: u64,
         confirmations: u32,
+        block_height: u64,
     },
     HtlcClaimed {
         id: String,
         tx_hash: String,
         preimage: String,
+        block_height: u64,
     },
     HtlcRefunded {
         id: String,
         tx_hash: String,
+        block_height: u64,
     },
     HtlcExpired {
         id: String,
@@ -89,49 +92,33 @@ impl EventHandler for BitcoinEventHandler {
             BitcoinEvent::HtlcCreated { id, params } => {
                 self.store.add_htlc_params(id, params).await?;
             }
-            BitcoinEvent::HtlcFunded { id, tx_hash, amount_sats, confirmations } => {
-                self.store.update_htlc_status(&id, HtlcStatus::Funded).await?;
-                
-                // Get current block height for init event
-                let current_block_height = self.store.get_current_block_height().await?;
-                
+            BitcoinEvent::HtlcFunded { id, tx_hash, amount_sats, confirmations, block_height } => {
                 // Update database with init information
-                self.store.update_swap_initiate(&id, &tx_hash, amount_sats, current_block_height).await?;
+                self.store.update_swap_initiate(&id, &tx_hash, &amount_sats.to_string(), &block_height.to_string()).await?;
                 
                 log::info!("HTLC funded: {} with {} sats ({} confirmations) at block {}", 
-                    id, amount_sats, confirmations, current_block_height);
+                    id, amount_sats, confirmations, block_height);
             }
-            BitcoinEvent::HtlcClaimed { id, tx_hash, preimage } => {
-                self.store.update_htlc_status(&id, HtlcStatus::Claimed).await?;
-                
-                // Get current block height for redeem event
-                let current_block_height = self.store.get_current_block_height().await?;
-                
+            BitcoinEvent::HtlcClaimed { id, tx_hash, preimage, block_height } => {
                 // Update database with redeem information
-                self.store.update_swap_redeem(&id, &tx_hash, current_block_height, &preimage).await?;
+                self.store.update_swap_redeem(&id, &tx_hash, &block_height.to_string(), &preimage).await?;
                 
                 log::info!("HTLC claimed: {} with preimage: {} (tx: {}) at block {}", 
-                    id, preimage, tx_hash, current_block_height);
+                    id, preimage, tx_hash, block_height);
             }
-            BitcoinEvent::HtlcRefunded { id, tx_hash } => {
-                self.store.update_htlc_status(&id, HtlcStatus::Refunded).await?;
-                
-                // Get current block height for refund event
-                let current_block_height = self.store.get_current_block_height().await?;
-                
+            BitcoinEvent::HtlcRefunded { id, tx_hash, block_height } => {
                 // Update database with refund information
-                self.store.update_swap_refund(&id, &tx_hash, current_block_height).await?;
+                self.store.update_swap_refund(&id, &tx_hash, &block_height.to_string()).await?;
                 
                 log::info!("HTLC refunded: {} with tx: {} at block {}", 
-                    id, tx_hash, current_block_height);
-            }
-            BitcoinEvent::HtlcExpired { id } => {
-                self.store.update_htlc_status(&id, HtlcStatus::Expired).await?;
-                log::info!("HTLC expired: {}", id);
+                    id, tx_hash, block_height);
             }
             BitcoinEvent::AddressBalanceChanged { address, old_balance, new_balance, tx_hash } => {
                 log::info!("Address {} balance changed: {} -> {} sats (tx: {})", 
                     address, old_balance, new_balance, tx_hash);
+            }
+            _ => {
+                log::info!("Unhandled event: {:?}", event);
             }
         }
         Ok(())

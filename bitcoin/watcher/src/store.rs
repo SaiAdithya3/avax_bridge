@@ -7,26 +7,26 @@ use std::clone::Clone;
 use reqwest;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Order {
-    pub id: String,
+pub struct Swap {
+    pub created_at: String,
+    pub swap_id: String,
     pub chain: String,
     pub asset: String,
-    pub amount: u64,
-    pub recipient_pubkey: String,
-    pub refund_pubkey: String,
-    pub hashlock: String,
+    pub htlc_address: String,
+    pub token_address: String,
+    pub initiator: String,
+    pub redeemer: String,
+    pub filled_amount: String,
     pub timelock: u32,
-    pub refund_address: String,
-    pub redeem_block_number: u64,
-    pub refund_block_number: u64,
-    pub created_at: u64,
-    // New fields for database updates
-    pub init_tx_hash: Option<String>,
-    pub filled_amount: Option<u64>,
-    pub init_block_number: Option<u64>,
-    pub redeem_tx_hash: Option<String>,
-    pub secret: Option<String>,
-    pub refund_tx_hash: Option<String>,
+    pub amount: String,
+    pub secret_hash: String,
+    pub secret: String,
+    pub initiate_tx_hash: String,
+    pub redeem_tx_hash: String,
+    pub refund_tx_hash: String,
+    pub initiate_block_number: Option<String>,
+    pub redeem_block_number: Option<String>,
+    pub refund_block_number: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -100,26 +100,6 @@ impl BitcoinStore {
         Ok(())
     }
 
-    pub async fn get_all_pending_htlcs(&self) -> Result<Vec<(String, BitcoinHtlcParams)>> {
-        let htlc_params = self.htlc_params.read().await;
-        let pending: Vec<_> = htlc_params
-            .iter()
-            .filter(|(_, params)| params.status == HtlcStatus::Pending)
-            .map(|(id, params)| (id.clone(), params.clone()))
-            .collect();
-        Ok(pending)
-    }
-
-    pub async fn get_all_funded_htlcs(&self) -> Result<Vec<(String, BitcoinHtlcParams)>> {
-        let htlc_params = self.htlc_params.read().await;
-        let funded: Vec<_> = htlc_params
-            .iter()
-            .filter(|(_, params)| params.status == HtlcStatus::Funded)
-            .map(|(id, params)| (id.clone(), params.clone()))
-            .collect();
-        Ok(funded)
-    }
-
     pub fn get_config(&self) -> &BitcoinConfig {
         &self.config
     }
@@ -143,25 +123,25 @@ impl BitcoinStore {
         Ok(())
     }
 
-    pub async fn get_active_orders(&self) -> Result<Vec<Order>> {
+    pub async fn get_active_swaps(&self) -> Result<Vec<Swap>> {
         // This would integrate with your actual database
         // Similar to the Go code:
         // sevenDays := time.Now().Add(-168 * time.Hour)
         // result := s.db.
         //     Where("chain = ? AND asset = ?", s.chain, s.asset).
         //     Where("amount > 0").
-        //     Where(`redeem_block_number = 0`).
-        //     Where(`refund_block_number = 0`).
+        //     Where(`redeem_block_number IS NULL`).
+        //     Where(`refund_block_number IS NULL`).
         //     Where("created_at >= ?", sevenDays).
         //     Find(&swaps)
         
         // For now, return empty vector - you'll need to implement actual database integration
-        // This should query your database for active Bitcoin orders with the following conditions:
+        // This should query your database for active Bitcoin swaps with the following conditions:
         // - chain = "bitcoin" 
         // - asset = "BTC"
         // - amount > 0
-        // - redeem_block_number = 0
-        // - refund_block_number = 0
+        // - redeem_block_number IS NULL
+        // - refund_block_number IS NULL
         // - created_at >= (current_time - 7 days)
         
         let current_time = std::time::SystemTime::now()
@@ -171,36 +151,36 @@ impl BitcoinStore {
         
         // TODO: Implement actual database query here
         // Example SQL equivalent:
-        // SELECT * FROM orders 
+        // SELECT * FROM swaps 
         // WHERE chain = 'bitcoin' 
         //   AND asset = 'BTC' 
         //   AND amount > 0 
-        //   AND redeem_block_number = 0 
-        //   AND refund_block_number = 0 
+        //   AND redeem_block_number IS NULL 
+        //   AND refund_block_number IS NULL 
         //   AND created_at >= ?
         
         // For testing, return some mock orders
         let mock_orders = vec![
-            Order {
-                id: "order_1".to_string(),
+            Swap {
+                created_at: current_time.to_string(),
+                swap_id: "tb1py2rxn9f2zq0s6h2jpu8tpvyu4zvh4uusvaztfvh4k39asyr93f6sp5qc4e".to_string(), // Example taproot script address
                 chain: "bitcoin".to_string(),
                 asset: "BTC".to_string(),
-                amount: 997000, // 0.001 BTC
-                recipient_pubkey: "be4b9e8e8c0146b155d3ce35d0e3dfef1c99ef598b63e00524a912dd21480bce".to_string(),
-                refund_pubkey: "460f2e8ff81fc4e0a8e6ce7796704e3829e3e3eedb8db9390bdc51f4f04cf0a6".to_string(),
-                hashlock: "731170d859f81a395a79e02cf3812e413b21793900e70ff77e48dfcf7ef6a4e6".to_string(),
+                htlc_address: "tb1py2rxn9f2zq0s6h2jpu8tpvyu4zvh4uusvaztfvh4k39asyr93f6sp5qc4e".to_string(),
+                token_address: "0x0000000000000000000000000000000000000000".to_string(),
+                initiator: "460f2e8ff81fc4e0a8e6ce7796704e3829e3e3eedb8db9390bdc51f4f04cf0a6".to_string(),
+                redeemer: "be4b9e8e8c0146b155d3ce35d0e3dfef1c99ef598b63e00524a912dd21480bce".to_string(),
+                filled_amount: "997000".to_string(),
                 timelock: 12, // 24 hours in blocks
-                refund_address: "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4".to_string(),
-                redeem_block_number: 0,
-                refund_block_number: 0,
-                created_at: current_time - 3600, // 1 hour ago
-                // New fields initialized as None
-                init_tx_hash: None,
-                filled_amount: None,
-                init_block_number: None,
-                redeem_tx_hash: None,
-                secret: None,
-                refund_tx_hash: None,
+                amount: "997000".to_string(),
+                secret_hash: "731170d859f81a395a79e02cf3812e413b21793900e70ff77e48dfcf7ef6a4e6".to_string(),
+                secret: "".to_string(),
+                initiate_tx_hash: "".to_string(),
+                redeem_tx_hash: "".to_string(),
+                refund_tx_hash: "".to_string(),
+                initiate_block_number: None,
+                redeem_block_number: None,
+                refund_block_number: None,
             },
         ];
         
@@ -222,41 +202,27 @@ impl BitcoinStore {
     }
 
     // New methods for database updates
-    pub async fn update_swap_initiate(&self, order_id: &str, init_tx_hash: &str, filled_amount: u64, init_block_number: u64) -> Result<()> {
+    pub async fn update_swap_initiate(&self, swap_id: &str, initiate_tx_hash: &str, filled_amount: &str, initiate_block_number: &str) -> Result<()> {
         // TODO: Implement database update
-        // UPDATE orders SET init_tx_hash = ?, filled_amount = ?, init_block_number = ? WHERE id = ?
-        log::info!("Updated order {} init: tx_hash={}, amount={}, block={}", 
-            order_id, init_tx_hash, filled_amount, init_block_number);
+        // UPDATE swaps SET initiate_tx_hash = ?, filled_amount = ?, initiate_block_number = ? WHERE swap_id = ?
+        log::info!("Updated swap {} initiate: tx_hash={}, amount={}, block={}", 
+            swap_id, initiate_tx_hash, filled_amount, initiate_block_number);
         Ok(())
     }
 
-    pub async fn update_swap_redeem(&self, order_id: &str, redeem_tx_hash: &str, redeem_block_number: u64, secret: &str) -> Result<()> {
+    pub async fn update_swap_redeem(&self, swap_id: &str, redeem_tx_hash: &str, redeem_block_number: &str, secret: &str) -> Result<()> {
         // TODO: Implement database update
-        // UPDATE orders SET redeem_tx_hash = ?, redeem_block_number = ?, secret = ? WHERE id = ?
-        log::info!("Updated order {} redeem: tx_hash={}, block={}, secret={}", 
-            order_id, redeem_tx_hash, redeem_block_number, secret);
+        // UPDATE swaps SET redeem_tx_hash = ?, redeem_block_number = ?, secret = ? WHERE swap_id = ?
+        log::info!("Updated swap {} redeem: tx_hash={}, block={}, secret={}", 
+            swap_id, redeem_tx_hash, redeem_block_number, secret);
         Ok(())
     }
 
-    pub async fn update_swap_refund(&self, order_id: &str, refund_tx_hash: &str, refund_block_number: u64) -> Result<()> {
+    pub async fn update_swap_refund(&self, swap_id: &str, refund_tx_hash: &str, refund_block_number: &str) -> Result<()> {
         // TODO: Implement database update
-        // UPDATE orders SET refund_tx_hash = ?, refund_block_number = ? WHERE id = ?
-        log::info!("Updated order {} refund: tx_hash={}, block={}", 
-            order_id, refund_tx_hash, refund_block_number);
+        // UPDATE swaps SET refund_tx_hash = ?, refund_block_number = ? WHERE swap_id = ?
+        log::info!("Updated swap {} refund: tx_hash={}, block={}", 
+            swap_id, refund_tx_hash, refund_block_number);
         Ok(())
-    }
-
-    pub async fn get_current_block_height(&self) -> Result<u64> {
-        // Get current block height from the indexer
-        let client = reqwest::Client::new();
-        let url = format!("{}/blocks/tip/height", self.config.indexer_url);
-        
-        let response = client.get(&url).send().await?;
-        if response.status().is_success() {
-            let height: u64 = response.text().await?.parse()?;
-            Ok(height)
-        } else {
-            Err(anyhow::anyhow!("Failed to get current block height: {}", response.status()))
-        }
     }
 }
