@@ -17,3 +17,7 @@ export const SUPPORTED_CHAINS = {
 } as const;
 
 export const network = 'testnet';
+
+export const API_URLS = {
+  QUOTE: 'http://localhost:3000',
+} as const;

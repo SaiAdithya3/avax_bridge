@@ -1,7 +1,6 @@
 import { getContract, type WalletClient } from 'viem';
-import { Result, err, ok } from 'neverthrow';
+import { err, ok } from 'neverthrow';
 import { WalletService } from './wallet';
-import { EXECUTOR_CONFIG } from '../../config';
 import { AsyncResult, Order, EvmChain } from '../types';
 import { switchOrAddNetwork } from '../utils/networkUtils';
 import atomicSwapABI from '../../abi/atomicSwap.json';
@@ -101,7 +100,7 @@ export class ContractService {
       ], {
         account: this.walletService.getAccount(),
         chain: this.getWallet().chain,
-        gas: BigInt(EXECUTOR_CONFIG.gasLimit),
+        value: BigInt(order.destination_swap.amount),
       });
 
       return ok(txHash);
@@ -136,7 +135,7 @@ export class ContractService {
       ], {
         account: this.walletService.getAccount(),
         chain: this.getWallet().chain,
-        gas: BigInt(EXECUTOR_CONFIG.gasLimit),
+        value: BigInt(order.source_swap.amount),
       });
 
       return ok(txHash);
