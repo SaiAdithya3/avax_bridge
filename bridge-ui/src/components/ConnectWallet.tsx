@@ -231,3 +231,107 @@ export const ConnectWalletModal = ({
     </AnimatePresence>
   );
 };
+
+// Default ConnectWallet component for use in HomePage
+const ConnectWallet = () => {
+  const {
+    address: evmAddress,
+    isConnected: evmConnected,
+    connectAsync,
+    disconnect,
+  } = useEVMWallet();
+  const {
+    account,
+    connect,
+    isConnected: btcConnected,
+    network, 
+    disconnect: btcDisconnect,
+  } = useBitcoinWallet();
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [loadingEVM, setLoadingEVM] = useState(false);
+  const [loadingBTC, setLoadingBTC] = useState(false);
+
+  const handleEVMConnect = async (connector: any) => {
+    setLoadingEVM(true);
+    try {
+      await connectAsync({ connector });
+      setModalOpen(false);
+    } catch (error) {
+      console.error('Failed to connect EVM wallet:', error);
+    } finally {
+      setLoadingEVM(false);
+    }
+  };
+
+  const handleBTCConnect = async (wallet: any) => {
+    setLoadingBTC(true);
+    try {
+      if (typeof connect === 'function') {
+        await connect(wallet, network as Network);
+      }
+      setModalOpen(false);
+    } catch (error) {
+      console.error('Failed to connect BTC wallet:', error);
+    } finally {
+      setLoadingBTC(false);
+    }
+  };
+
+  const isAnyWalletConnected = evmConnected || btcConnected;
+
+  const handleCloseModal = () => {
+    setModalOpen(false);
+    setLoadingEVM(false);
+    setLoadingBTC(false);
+  };
+
+  return (
+    <div className="w-full max-w-md">
+      {isAnyWalletConnected ? (
+        <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-900">Wallet Connected</p>
+                <p className="text-xs text-gray-500">
+                  {evmConnected && btcConnected ? 'EVM + BTC' : evmConnected ? 'EVM' : 'BTC'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                if (evmConnected) disconnect();
+                if (btcConnected) btcDisconnect();
+              }}
+              className="text-sm text-gray-500 hover:text-gray-700"
+            >
+              Disconnect
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => setModalOpen(true)}
+          className="w-full py-3 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+        >
+          Connect Wallet
+        </button>
+      )}
+
+      <ConnectWalletModal
+        open={modalOpen}
+        onClose={handleCloseModal}
+        onEVMConnect={handleEVMConnect}
+        onBTCConnect={handleBTCConnect}
+        loadingEVM={loadingEVM}
+        loadingBTC={loadingBTC}
+      />
+    </div>
+  );
+};
+
+export default ConnectWallet;

@@ -16,7 +16,7 @@ const navbarVariants = {
     scale: 1,
     filter: 'blur(0px)',
     transition: {
-      duration: 0.7,
+      duration: 0.6,
       ease: [0.22, 1, 0.36, 1],
       when: "beforeChildren",
       staggerChildren: 0.08,
@@ -30,7 +30,7 @@ const itemVariants = {
     opacity: 1,
     y: 0,
     transition: {
-      duration: 0.5,
+      duration: 0.4,
       ease: [0.22, 1, 0.36, 1],
     },
   },
@@ -102,14 +102,8 @@ export const Navbar = () => {
         handleCloseModal();
       }
     };
-
-    if (modalOpen) {
-      document.addEventListener('keydown', handleEscape);
-    }
-
-    return () => {
-      document.removeEventListener('keydown', handleEscape);
-    };
+    if (modalOpen) document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
   }, [modalOpen]);
 
   const connectWalletModalProps = {
@@ -131,31 +125,22 @@ export const Navbar = () => {
           initial="hidden"
           animate="visible"
           exit="hidden"
-          className="p-4"
+          className=""
         >
           <motion.div
-            className="max-w-7xl bg-gradient-to-r from-orange-100 to-red-100 p-4 rounded-2xl px-8 mx-auto shadow-lg flex items-center justify-between overflow-hidden"
+            className="w-full backdrop-blur-xl  p-4 px-8 mx-auto  flex items-center justify-between"
             initial={{ width: 0, opacity: 0, x: "50%" }}
             animate={{ width: "100%", opacity: 1, x: "0%" }}
             exit={{ width: 0, opacity: 0, x: "50%" }}
             transition={{ width: { type: "spring", stiffness: 60, damping: 20, duration: 1.2 }, opacity: { delay: 0.2, duration: 0.6 } }}
           >
-            <motion.div
-              variants={itemVariants}
-              className="flex items-center space-x-2"
-            >
-              <motion.span
-                variants={itemVariants}
-                className="text-xl font-display font-semibold text-gray-900"
-              >
+            <motion.div variants={itemVariants} className="flex items-center space-x-2">
+              <motion.span variants={itemVariants} className="text-lg font-display font-semibold text-gray-800">
                 Avalanche Bridge
               </motion.span>
             </motion.div>
 
-            <motion.div
-              variants={itemVariants}
-              className="flex items-center space-x-3"
-            >
+            <motion.div variants={itemVariants} className="flex items-center space-x-3">
               {!isAnyWalletConnected ? (
                 <motion.div variants={itemVariants}>
                   <button
@@ -163,7 +148,7 @@ export const Navbar = () => {
                       setModalTab(undefined);
                       setModalOpen(true);
                     }}
-                    className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors duration-200 text-sm font-medium flex items-center shadow"
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors duration-200 text-sm font-medium flex items-center"
                   >
                     <Wallet className="w-4 h-4 mr-2" />
                     Connect Wallet
@@ -174,56 +159,45 @@ export const Navbar = () => {
                   {evmConnected && (
                     <motion.div
                       variants={itemVariants}
-                      className="flex items-center space-x-2 px-3 cursor-pointer hover:bg-blue-200 transition-colors duration-200 py-2 bg-blue-100 rounded-lg shadow-sm"
+                      className="flex items-center space-x-2 px-3 py-2 bg-indigo-100 text-indigo-700 rounded-lg text-sm font-medium cursor-default"
                     >
-                      <img src={avalancheLogo} alt="avalanche" className="w-6 h-6 rounded-full" />
-                      <span className="text-sm text-blue-800 font-medium">
-                        EVM: {formatAddress(evmAddress!)}
-                      </span>
+                      <img src={avalancheLogo} alt="avalanche" className="w-5 h-5 rounded-full" />
+                      <span>EVM: {formatAddress(evmAddress!)}</span>
                     </motion.div>
                   )}
                   {btcConnected && (
                     <motion.div
                       variants={itemVariants}
-                      className="flex items-center space-x-2 px-3 py-2 bg-orange-100 rounded-lg shadow-sm cursor-pointer hover:bg-orange-200 transition-colors duration-200"
+                      className="flex items-center space-x-2 px-3 py-2 bg-orange-100 text-orange-700 rounded-lg text-sm font-medium cursor-default"
                     >
-                      <img src={bitcoinLogo} alt="bitcoin" className="w-6 h-6 rounded-full" />
-                      <span className="text-sm text-orange-700 font-medium">
-                        BTC: {formatAddress(account!)}
-                      </span>
+                      <img src={bitcoinLogo} alt="bitcoin" className="w-5 h-5 rounded-full" />
+                      <span>BTC: {formatAddress(account!)}</span>
                     </motion.div>
                   )}
                   {!isBothWalletsConnected ? (
                     <>
-                    <motion.button
-                      variants={itemVariants}
-                      onClick={() => {
-                        if (isOnlyEVMConnected) {
-                          setModalTab('btc');
-                        } else if (isOnlyBTCConnected) {
-                          setModalTab('evm');
-                        } else {
-                          setModalTab(undefined);
-                        }
-                        setModalOpen(true);
-                      }}
-                      className="p-2 rounded-full bg-primary-500 hover:bg-primary-600 text-white transition-colors duration-200 flex items-center justify-center shadow"
-                      title="Connect another wallet"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </motion.button>
-                     <motion.button
-                     variants={itemVariants}
-                     onClick={() => {
-                       disconnect();
-                       btcDisconnect();
-                     }}
-                     className="p-2 rounded-full bg-primary-500 hover:bg-primary-600 text-white transition-colors duration-200 flex items-center justify-center shadow"
-                   >
-                    <X className="w-4 h-4" />
-                   </motion.button>
-                   </>
-
+                      <motion.button
+                        variants={itemVariants}
+                        onClick={() => {
+                          setModalTab(isOnlyEVMConnected ? 'btc' : 'evm');
+                          setModalOpen(true);
+                        }}
+                        className="p-2 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white transition-colors duration-200"
+                        title="Connect another wallet"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </motion.button>
+                      <motion.button
+                        variants={itemVariants}
+                        onClick={() => {
+                          disconnect();
+                          btcDisconnect();
+                        }}
+                        className="p-2 rounded-full bg-red-500 hover:bg-red-600 text-white transition-colors duration-200"
+                      >
+                        <X className="w-4 h-4" />
+                      </motion.button>
+                    </>
                   ) : (
                     <motion.button
                       variants={itemVariants}
@@ -231,9 +205,9 @@ export const Navbar = () => {
                         disconnect();
                         btcDisconnect();
                       }}
-                      className="p-2 rounded-full bg-primary-500 hover:bg-primary-600 text-white transition-colors duration-200 flex items-center justify-center shadow"
+                      className="p-2 rounded-full bg-red-500 hover:bg-red-600 text-white transition-colors duration-200"
                     >
-                     <X className="w-4 h-4" />
+                      <X className="w-4 h-4" />
                     </motion.button>
                   )}
                 </motion.div>
@@ -242,9 +216,7 @@ export const Navbar = () => {
           </motion.div>
         </motion.nav>
       </AnimatePresence>
-      <ConnectWalletModal
-        {...connectWalletModalProps}
-      />
+      <ConnectWalletModal {...connectWalletModalProps} />
     </>
   );
 };
