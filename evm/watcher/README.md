@@ -1,409 +1,315 @@
-# EVM Blockchain Event Watcher
+# EVM Watcher - Enhanced Event Processing System
 
-A robust, multi-chain EVM blockchain event watcher that monitors new blocks and processes contract events in real-time. **Currently supports ERC20 tokens only.**
+A comprehensive blockchain event monitoring system that captures and processes all events from EVM-compatible chains with complete data preservation.
 
-## 🏗️ **Architecture Overview**
+## Features
 
-```
-evm/watcher/
-├── config.ts                 # 🎯 CENTRALIZED CONFIGURATION
-├── abi/                      # 📄 CONTRACT ABI FILES
-│   └── erc20.json           # ERC20 token ABI
-├── package.json
-├── tsconfig.json
-├── src/
-│   ├── types/               # TypeScript interfaces
-│   ├── services/            # Core services
-│   │   ├── abiLoader.ts     # ABI management service
-│   │   ├── database.ts      # MongoDB operations
-│   │   ├── eventHandler.ts  # Event processing
-│   │   ├── blockWatcher.ts  # Block monitoring
-│   │   └── watcherManager.ts # Multi-chain coordination
-│   ├── utils/               # Utilities
-│   └── examples/            # Usage examples
-└── dist/                    # Compiled JavaScript
-```
+### 🎯 Complete Event Data Capture
+- **Raw Log Data**: Captures all raw blockchain log data including topics, data, and metadata
+- **Parsed Arguments**: Extracts and parses event arguments according to ABI definitions
+- **Typed Event Data**: Provides strongly-typed event data structures for each contract type
+- **Gas Information**: Captures transaction gas usage, price, and cumulative gas data
+- **Transaction Details**: Includes block information, timestamps, and transaction hashes
 
-## ⚙️ **Centralized Configuration**
+### 🔍 Supported Contract Types
+- **ERC20**: Transfer and Approval events
+- **Atomic Swap**: Initiated, Redeemed, Refunded, and EIP712DomainChanged events
+- **Registry**: Contract management events including ownership transfers and implementation updates
 
-**All configuration is centralized in `/config.ts`** - no scattered config files!
+### ⚡ Multi-Chain Support
+- Avalanche Fuji Testnet (43113)
+- Arbitrum Sepolia Testnet (421614)
+- Easily extensible to other EVM chains
 
-### **1. Database Configuration**
+## Event Data Structure
+
+Every processed event contains the following complete information:
+
 ```typescript
-export const DB_CONFIG = {
-  uri: process.env.MONGODB_URI || 'mongodb://localhost:27017',
-  name: process.env.MONGODB_DB || 'evm_watcher',
-  options: {
-    maxPoolSize: 10,
-    serverSelectionTimeoutMS: 5000,
-    socketTimeoutMS: 45000,
-  }
-};
+interface WatchedEvent {
+  // Basic identification
+  id: string;
+  chainId: string;
+  contractAddress: string;
+  contractType: string;
+  
+  // Blockchain metadata
+  blockNumber: number;
+  blockHash: string;
+  transactionHash: string;
+  logIndex: number;
+  
+  // Event information
+  eventName: string;
+  eventSignature: string;
+  
+  // Complete data capture
+  eventData: any;                    // Raw log data from blockchain
+  parsedArgs: any;                   // Parsed arguments from ABI
+  rawLog: {                          // Enhanced raw log data
+    address: string;
+    topics: string[];
+    data: string;
+    blockNumber: string;
+    transactionHash: string;
+    transactionIndex: string;
+    blockHash: string;
+    logIndex: string;
+    removed: boolean;
+  };
+  eventDataTyped: any;               // Strongly-typed event data
+  
+  // Gas information
+  gasUsed?: string;
+  gasPrice?: string;
+  effectiveGasPrice?: string;
+  cumulativeGasUsed?: string;
+  
+  // Timestamps
+  timestamp: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Processing status
+  processed: boolean;
+}
 ```
 
-### **2. Watcher Configuration**
+## Supported Events
+
+### ERC20 Events
 ```typescript
-export const WATCHER_CONFIG = {
-  pollInterval: parseInt(process.env.POLL_INTERVAL || '1000'),
-  maxRetries: parseInt(process.env.MAX_RETRIES || '5'),
-  retryDelay: parseInt(process.env.RETRY_DELAY || '5000'),
-  batchSize: parseInt(process.env.BATCH_SIZE || '10')
-};
+Transfer: {
+  from: string;      // Sender address
+  to: string;        // Recipient address
+  value: string;     // Token amount
+}
+
+Approval: {
+  owner: string;     // Token owner
+  spender: string;   // Approved spender
+  value: string;     // Approved amount
+}
 ```
 
-### **3. Simplified Chain Configuration**
+### Atomic Swap Events
 ```typescript
-export const chainConfig: Chain[] = [
+Initiated: {
+  orderID: string;       // Unique order identifier
+  secretHash: string;    // Hash of the secret
+  amount: string;        // Swap amount
+}
+
+Redeemed: {
+  orderID: string;       // Unique order identifier
+  secretHash: string;    // Hash of the secret
+  secret: string;        // The actual secret
+}
+
+Refunded: {
+  orderID: string;       // Unique order identifier
+}
+
+EIP712DomainChanged: {}  // Domain configuration changed
+```
+
+### Registry Events
+```typescript
+ATOMIC_SWAPAdded: {
+  ATOMIC_SWAP: string;   // Added atomic swap contract
+}
+
+NativeATOMIC_SWAPAdded: {
+  nativeATOMIC_SWAP: string;  // Added native atomic swap contract
+}
+
+NativeUDACreated: {
+  addressNativeUDA: string;   // Created native UDA address
+  refundAddress: string;      // Refund address
+}
+
+OwnershipTransferred: {
+  previousOwner: string;      // Previous owner
+  newOwner: string;          // New owner
+}
+
+UDACreated: {
+  addressUDA: string;        // Created UDA address
+  refundAddress: string;     // Refund address
+  token: string;             // Associated token
+}
+```
+
+## Configuration
+
+### Chain Configuration
+```typescript
+const chainConfig: Chain[] = [
   {
-    id: 'ethereum',
-    startBlock: 15000000,
-    rpcUrl: process.env.ETHEREUM_RPC_URL || 'https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY',
+    id: '43113', // Avalanche Fuji
+    startBlock: 0,
+    rpcUrl: 'https://api.avax-test.network/ext/bc/C/rpc',
+    maxBlockSpan: 100,
     contracts: [
       {
-        address: "0xA0b86a33E6441b8c4C1C1b8B4b2b8B4b2b8B4b2b", // USDC
-        type: "erc20"
+        address: '0x...', // Your contract address
+        type: 'erc20'
+      },
+      {
+        address: '0x...', // Your contract address
+        type: 'atomic_swap'
+      },
+      {
+        address: '0x...', // Your contract address
+        type: 'registry'
       }
     ]
   }
 ];
 ```
 
-### **4. Contract Configuration**
+### Watcher Options
 ```typescript
-interface ContractConfig {
-  address: string;    // Contract address
-  type: 'erc20';      // Contract type (ABI loaded automatically)
-}
-```
-
-**No more complex configuration!** Just specify:
-- **Chain ID** and **start block**
-- **RPC URL** for the chain
-- **Contract address** and **type**
-- **Events are automatically determined** based on contract type
-
-### **5. Supported Contract Types**
-- **`erc20`**: Standard ERC20 tokens
-- *More types coming soon...*
-
-### **6. ABI Management**
-ABIs are stored in `/abi/` directory:
-- `erc20.json` - Complete ERC20 token ABI
-- ABIs are automatically loaded based on contract type
-- No need to manually specify ABI in configuration
-
-## 🚀 **Quick Start**
-
-### **1. Install Dependencies**
-```bash
-cd evm/watcher
-npm install
-```
-
-### **2. Configure Your ERC20 Contracts**
-Edit `config.ts` and add your ERC20 tokens:
-
-```typescript
-// Add your ERC20 contract to ethereum
-chainConfig[0].contracts.push({
-  address: "0xYourContractAddress",
-  type: "erc20" // ABI loaded automatically, events determined by type
-});
-```
-
-**That's it!** No need to specify:
-- ❌ ABI arrays
-- ❌ Event lists  
-- ❌ Contract names
-- ❌ Start blocks per contract
-
-### **3. Set Environment Variables (Optional)**
-```bash
-export MONGODB_URI="mongodb://your-server:27017"
-export ETHEREUM_RPC_URL="https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY"
-export AVALANCHE_RPC_URL="https://api.avax.network/ext/bc/C/rpc"
-```
-
-### **4. Build and Run**
-```bash
-npm run build
-npm start
-```
-
-## 🔧 **Contract Management**
-
-### **Adding ERC20 Contracts Programmatically**
-```typescript
-import { addContractToChain } from './config';
-
-const newERC20Contract = {
-  address: "0x1234...",
-  name: "New Token",
-  type: "erc20", // ABI loaded automatically
-  startBlock: 19000000,
-  events: ["Transfer", "Approval"]
+const WATCHER_CONFIG = {
+  pollInterval: 1000,    // Poll every 1 second
+  maxRetries: 5,         // Maximum retry attempts
+  retryDelay: 5000,      // Delay between retries
+  batchSize: 10          // Process 10 blocks at a time
 };
-
-addContractToChain("ethereum", newERC20Contract);
 ```
 
-### **Contract Configuration Interface**
-```typescript
-interface ContractConfig {
-  address: string;    // Contract address (checksummed)
-  name: string;       // Human-readable name
-  type: 'erc20';      // Contract type (determines ABI)
-  startBlock?: number; // Block to start watching from
-  events: string[];   // Event names to monitor
-}
-```
+## Usage
 
-## 📊 **ABI Loader System**
-
-### **How It Works**
-1. Contract type specified in configuration
-2. ABI automatically loaded from `/abi/{type}.json`
-3. Contract interface created using loaded ABI
-4. Events parsed using the interface
-
-### **ABI Loader Service**
-```typescript
-import { AbiLoader } from './src/services/abiLoader';
-
-// Load ABI for contract type
-const abi = AbiLoader.loadAbi('erc20');
-
-// Get available contract types
-const types = AbiLoader.getAvailableTypes();
-
-// Get events from ABI
-const events = AbiLoader.getEventsFromAbi('erc20');
-```
-
-## 🎯 **ERC20 Token Support**
-
-### **Standard ERC20 Events**
-- **Transfer**: Token transfers between addresses
-- **Approval**: Token spending approvals
-
-### **Example ERC20 Configuration**
-```typescript
-{
-  address: "0xdAC17F958D2ee523a2206206994597C13D831ec7", // USDT
-  name: "Tether USD",
-  type: "erc20",
-  startBlock: 15000000,
-  events: ["Transfer", "Approval"]
-}
-```
-
-### **Popular ERC20 Tokens Pre-configured**
-- **Ethereum**: USDC, USDT examples
-- **Avalanche**: USDC.e example
-- **Polygon**: USDC example
-- **BSC**: USDT example
-
-## 📊 **System Flow**
-
-```
-1. Load Configuration from config.ts
-    ↓
-2. Initialize ABI Loader
-    ↓
-3. Load ABIs for contract types
-    ↓
-4. Initialize Database (MongoDB)
-    ↓
-5. Start Watcher Manager
-    ↓
-6. For each configured chain:
-    ↓
-7. Start Block Watcher
-    ↓
-8. Monitor new blocks
-    ↓
-9. Process ERC20 contract events
-    ↓
-10. Parse events using loaded ABIs
-    ↓
-11. Save events to database
-    ↓
-12. Trigger event handlers
-```
-
-## 🎯 **Key Features**
-
-- **🎯 Centralized Config**: Everything in one `config.ts` file
-- **📄 ABI Management**: Automatic ABI loading by contract type
-- **🪙 ERC20 Focus**: Specialized for ERC20 token monitoring
-- **🔗 Multi-Chain**: Support for Ethereum, Avalanche, Polygon, BSC, Arbitrum, Optimism
-- **📦 Contract Management**: Easy add/remove contracts
-- **🔄 Memory Tracking**: Block progress kept in memory for fast restarts
-- **📊 Event Persistence**: All events saved to MongoDB
-- **🛡️ Error Handling**: Retry mechanism with configurable limits
-- **📝 Logging**: Comprehensive logging with Winston
-
-## 🔄 **Event Handling**
-
-### **ERC20 Event Handlers**
-```typescript
-import { EventHandlerService } from './src/services/eventHandler';
-
-const eventHandler = new EventHandlerService();
-
-// Transfer event handler
-eventHandler.registerHandler("Transfer", async (event) => {
-  const { from, to, value } = event.parsedArgs;
-  console.log(`Transfer: ${from} → ${to}: ${value}`);
-  // Your custom logic here
-});
-
-// Approval event handler
-eventHandler.registerHandler("Approval", async (event) => {
-  const { owner, spender, value } = event.parsedArgs;
-  console.log(`Approval: ${owner} approved ${spender} for ${value}`);
-  // Your custom logic here
-});
-```
-
-## 📊 **Database Schema**
-
-### **Events Collection**
-```typescript
-interface WatchedEvent {
-  id: string;              // Unique event ID
-  chainId: string;         // Chain identifier
-  contractAddress: string; // ERC20 contract address
-  contractName: string;    // Token name
-  blockNumber: number;     // Block number
-  blockHash: string;       // Block hash
-  transactionHash: string; // Transaction hash
-  logIndex: number;        // Log index in block
-  eventName: string;       // "Transfer" or "Approval"
-  eventSignature: string;  // Event signature
-  eventData: any;          // Raw event data
-  parsedArgs: any;         // Parsed event arguments
-  timestamp: Date;         // Block timestamp
-  processed: boolean;      // Processing status
-  createdAt: Date;         // Creation timestamp
-  updatedAt: Date;         // Last update timestamp
-}
-```
-
-## 🚀 **Usage Examples**
-
-### **Basic Usage**
+### Starting the Watcher
 ```typescript
 import { EVMWatcher } from './src/index';
 
 const watcher = new EVMWatcher();
 await watcher.start();
-
-// Check status
-const status = watcher.getStatus();
-console.log(status);
-
-// Check health
-const health = await watcher.getHealth();
-console.log(health);
 ```
 
-### **Adding ERC20 Contracts at Runtime**
+### Adding Contracts Dynamically
 ```typescript
-const erc20Contract = {
-  address: "0x1234...",
-  name: "Runtime Token",
-  type: "erc20", // ABI loaded automatically
-  startBlock: undefined, // Start from current
-  events: ["Transfer", "Approval"]
-};
-
-await watcher.addContract("ethereum", erc20Contract);
+await watcher.addContract('43113', {
+  address: '0x...',
+  type: 'erc20'
+});
 ```
 
-## 📝 **Environment Variables**
+### Getting Event Statistics
+```typescript
+const eventHandler = watcher.eventHandler;
+const stats = eventHandler.getEventStats();
+console.log('Event processing statistics:', stats);
+```
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MONGODB_URI` | `mongodb://localhost:27017` | MongoDB connection string |
-| `MONGODB_DB` | `evm_watcher` | Database name |
-| `POLL_INTERVAL` | `1000` | Block polling interval (ms) |
-| `MAX_RETRIES` | `5` | Max retries per block |
-| `RETRY_DELAY` | `5000` | Delay between retries (ms) |
-| `BATCH_SIZE` | `10` | Events per batch |
-| `ETHEREUM_RPC_URL` | `https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY` | Ethereum RPC endpoint |
-| `AVALANCHE_RPC_URL` | `https://api.avax.network/ext/bc/C/rpc` | Avalanche RPC endpoint |
+## Event Processing Flow
 
-## 🔧 **Development**
+1. **Block Monitoring**: Continuously monitors new blocks on configured chains
+2. **Log Extraction**: Extracts all logs from monitored contracts in each block
+3. **Event Parsing**: Parses logs using contract ABIs to extract event data
+4. **Data Enhancement**: Adds gas information, timestamps, and typed data structures
+5. **Handler Execution**: Routes events to appropriate handlers based on event type
+6. **Complete Logging**: Logs all event data for monitoring and debugging
 
-### **Build**
+## Data Preservation
+
+The system ensures **zero data loss** by:
+- Capturing raw blockchain logs exactly as emitted
+- Preserving all event topics and data
+- Maintaining original transaction and block information
+- Storing both parsed and raw representations
+- Including gas usage and pricing information
+
+## Monitoring and Debugging
+
+### Event Data Logging
+Every event is logged with complete information:
+```
+=== Event Data for Transfer ===
+Contract: 0x... (erc20)
+Block: 12345 (0x...)
+Transaction: 0x...
+Log Index: 0
+Timestamp: 2024-01-01T00:00:00.000Z
+Parsed Args: { from: '0x...', to: '0x...', value: '1000000000000000000' }
+Typed Event Data: { Transfer: { from: '0x...', to: '0x...', value: '1000000000000000000' } }
+Gas Info: { gasUsed: '21000', gasPrice: '20000000000' }
+Raw Log Topics: ['0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef', '0x...', '0x...']
+Raw Log Data: 0x...
+=== End Event Data ===
+```
+
+### Statistics Tracking
+Track event processing statistics:
+- Total events processed
+- Events by type and contract
+- Processing errors
+- Last processed event timestamp
+
+## Error Handling
+
+- **Retry Logic**: Automatic retry with exponential backoff
+- **Graceful Degradation**: Continues processing other events if one fails
+- **Comprehensive Logging**: Detailed error information for debugging
+- **Health Monitoring**: Continuous health checks and status reporting
+
+## Performance
+
+- **Batch Processing**: Processes multiple blocks simultaneously
+- **Efficient Polling**: Configurable polling intervals
+- **Memory Management**: Efficient data structures and caching
+- **Scalable Architecture**: Easy to add new chains and contracts
+
+## Extensibility
+
+### Adding New Contract Types
+1. Add new contract type to `ContractType` union
+2. Create event data interfaces
+3. Add event handlers
+4. Update ABI loading logic
+
+### Adding New Events
+1. Define event structure in ABI
+2. Add to supported events list
+3. Create typed data mapping
+4. Implement event handler
+
+## Security Features
+
+- **Input Validation**: Validates all contract addresses and configurations
+- **Error Isolation**: Prevents single event failure from affecting others
+- **Secure Logging**: No sensitive data exposure in logs
+- **Access Control**: Configurable contract monitoring permissions
+
+## Development
+
+### Prerequisites
+- Node.js 18+
+- TypeScript 5+
+- Access to EVM RPC endpoints
+
+### Installation
 ```bash
+npm install
 npm run build
-```
-
-### **Development Mode**
-```bash
-npm run dev
-```
-
-### **Production**
-```bash
 npm start
 ```
 
-## 📚 **File Structure**
-
-```
-evm/watcher/
-├── config.ts                    # 🎯 ALL CONFIGURATION HERE
-├── abi/                         # 📄 CONTRACT ABI FILES
-│   └── erc20.json              # ERC20 token ABI
-├── package.json                 # Dependencies
-├── tsconfig.json               # TypeScript config
-├── src/
-│   ├── types/
-│   │   └── index.ts            # TypeScript interfaces
-│   ├── services/
-│   │   ├── abiLoader.ts        # ABI management service
-│   │   ├── database.ts         # MongoDB operations
-│   │   ├── eventHandler.ts     # Event processing
-│   │   ├── blockWatcher.ts     # Block monitoring
-│   │   └── watcherManager.ts   # Multi-chain coordination
-│   ├── utils/
-│   │   └── logger.ts           # Logging utility
-│   ├── examples/
-│   │   └── addContract.ts      # Usage examples
-│   └── index.ts                # Main entry point
-└── dist/                        # Compiled output
+### Testing
+```bash
+npm test
+npm run test:watch
 ```
 
-## 🎯 **Configuration Philosophy**
+## Contributing
 
-**Everything in one place!** The `config.ts` file is your single source of truth for:
+1. Fork the repository
+2. Create a feature branch
+3. Implement your changes
+4. Add tests
+5. Submit a pull request
 
-- ✅ Database settings
-- ✅ Watcher behavior
-- ✅ RPC endpoints
-- ✅ ERC20 contract definitions
-- ✅ Chain configurations
-- ✅ Helper functions
+## License
 
-**ABI management is automatic** - just specify the contract type!
-
-## 🚀 **Ready to Use!**
-
-The system is now fully centralized and ready to monitor ERC20 tokens. Just:
-
-1. **Edit `config.ts`** with your ERC20 contracts
-2. **Set environment variables** (optional)
-3. **Run `npm start`**
-
-Your watcher will automatically monitor all configured ERC20 tokens across multiple chains! 🎉
-
-## 🔮 **Future Enhancements**
-
-- Support for more contract types (ERC721, DEX, Bridge, etc.)
-- Dynamic ABI loading from blockchain
-- Event filtering and aggregation
-- Real-time notifications
-- Dashboard UI
+MIT License - see LICENSE file for details.

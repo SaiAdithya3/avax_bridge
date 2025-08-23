@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { logger } from '../utils/logger';
 
-export type ContractType = 'erc20' | 'atomic_swap';
+export type ContractType = 'erc20' | 'atomic_swap' | 'registry';
 
 export class AbiLoader {
   private static abiCache: Map<ContractType, any[]> = new Map();
@@ -82,14 +82,54 @@ export class AbiLoader {
   }
 
   /**
-   * Get default events for a contract type (for ERC20, always Transfer and Approval)
+   * Get event details from ABI for a specific contract type
+   */
+  static getEventDetails(contractType: ContractType): Array<{
+    name: string;
+    inputs: Array<{
+      name: string;
+      type: string;
+      indexed: boolean;
+      internalType: string;
+    }>;
+    anonymous: boolean;
+  }> {
+    try {
+      const abi = this.loadAbi(contractType);
+      const events = abi
+        .filter(item => item.type === 'event')
+        .map(event => ({
+          name: event.name,
+          inputs: event.inputs || [],
+          anonymous: event.anonymous || false
+        }));
+
+      return events;
+    } catch (error) {
+      logger.error(`Failed to get event details for contract type ${contractType}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Get default events for a contract type
    */
   static getDefaultEvents(contractType: ContractType): string[] {
     switch (contractType) {
       case 'erc20':
         return ['Transfer', 'Approval'];
       case 'atomic_swap':
-        return ['Initiated', 'Redeemed', 'Refunded'];
+        return ['Initiated', 'Redeemed', 'Refunded', 'EIP712DomainChanged'];
+      case 'registry':
+        return [
+          'ATOMIC_SWAPAdded',
+          'NativeATOMIC_SWAPAdded', 
+          'NativeUDACreated',
+          'NativeUDAImplUpdated',
+          'OwnershipTransferred',
+          'UDACreated',
+          'UDAImplUpdated'
+        ];
       default:
         return [];
     }
@@ -107,6 +147,6 @@ export class AbiLoader {
    * Validate if a contract type is supported
    */
   static isValidContractType(type: string): type is ContractType {
-    return ['erc20', 'atomic_swap'].includes(type as ContractType);
+    return ['erc20', 'atomic_swap', 'registry'].includes(type as ContractType);
   }
 }
