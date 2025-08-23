@@ -22,6 +22,8 @@ use alloy::{
 
 use crate::HTLCRegistry::HTLCRegistryInstance;
 
+// --- CORS imports ---
+use tower_http::cors::{CorsLayer, Any};
 
 sol!(
     #[sol(rpc)]
@@ -308,7 +310,13 @@ async fn main() -> Result<()> {
         .route("/orders", post(create_order))
         .route("/orders/id/:order_id", get(get_order))
         .route("/orders/user/:user_id", get(get_orders_by_user))
-        .with_state(state);
+        .with_state(state)
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any)
+        );
 
     // Run it
     let addr = SocketAddr::from(([127, 0, 0, 1], 4455));
@@ -319,3 +327,4 @@ async fn main() -> Result<()> {
     
     Ok(())
 }
+

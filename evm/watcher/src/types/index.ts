@@ -8,42 +8,69 @@ export interface Chain {
 
 export interface ContractConfig {
   address: string;
-  type: 'erc20' | 'atomic_swap';
+  type: 'erc20' | 'atomic_swap' | 'registry';
 }
 
-export interface WatchedEvent {
-  id: string;
-  chainId: string;
-  contractAddress: string;
-  contractType: string;
-  blockNumber: number;
-  blockHash: string;
-  transactionHash: string;
-  logIndex: number;
-  eventName: string;
-  eventSignature: string;
-  eventData: any;
-  parsedArgs: any;
-  timestamp: Date;
-  processed: boolean;
-  createdAt: Date;
-  updatedAt: Date;
+// Enhanced event data types based on ABI definitions
+export interface ERC20EventData {
+  Transfer: {
+    from: string;
+    to: string;
+    value: string;
+  };
+  Approval: {
+    owner: string;
+    spender: string;
+    value: string;
+  };
 }
 
-export interface WatcherStatus {
-  chainId: string;
-  lastProcessedBlock: number;
-  currentBlock: number;
-  isRunning: boolean;
-  lastActivity: Date;
-  errorCount: number;
-  lastError?: string;
+export interface AtomicSwapEventData {
+  Initiated: {
+    orderID: string;
+    secretHash: string;
+    amount: string;
+  };
+  Redeemed: {
+    orderID: string;
+    secretHash: string;
+    secret: string;
+  };
+  Refunded: {
+    orderID: string;
+  };
+  EIP712DomainChanged: {};
 }
 
-export interface EventHandler {
-  eventName: string;
-  handler: (event: WatchedEvent) => Promise<void>;
+export interface RegistryEventData {
+  ATOMIC_SWAPAdded: {
+    ATOMIC_SWAP: string;
+  };
+  NativeATOMIC_SWAPAdded: {
+    nativeATOMIC_SWAP: string;
+  };
+  NativeUDACreated: {
+    addressNativeUDA: string;
+    refundAddress: string;
+  };
+  NativeUDAImplUpdated: {
+    impl: string;
+  };
+  OwnershipTransferred: {
+    previousOwner: string;
+    newOwner: string;
+  };
+  UDACreated: {
+    addressUDA: string;
+    refundAddress: string;
+    token: string;
+  };
+  UDAImplUpdated: {
+    impl: string;
+  };
 }
+
+export type AllEventData = ERC20EventData & AtomicSwapEventData & RegistryEventData;
 
 export interface WatcherOptions {
   pollInterval?: number; // milliseconds

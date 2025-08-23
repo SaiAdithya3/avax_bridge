@@ -108,7 +108,8 @@ pub struct Swap {
     pub initiate_block_number: Option<String>,
     pub redeem_block_number: Option<String>,
     pub refund_block_number: Option<String>,
-    pub deposit_address: Option<String>
+    pub deposit_address: Option<String>,
+    pub has_deposit: bool
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

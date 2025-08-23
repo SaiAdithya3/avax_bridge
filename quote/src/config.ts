@@ -41,9 +41,9 @@ export const config: Config = {
       decimals: 18,
       cmcId: 5805
     },
-    usdt: {
-      symbol: 'USDT',
-      name: 'Tether',
+    usdc: {
+      symbol: 'USDC',
+      name: 'USD Coin',
       decimals: 6,
       cmcId: 825
     }
@@ -53,7 +53,7 @@ export const config: Config = {
       id: 'avalanche_testnet',
       name: 'Avalanche Testnet',
       rpcUrl: 'https://api.avax-test.network/ext/bc/C/rpc',
-      supportedAssets: ['avax', 'usdt'] // AVAX and USDT are native to Avalanche
+      supportedAssets: ['avax', 'usdc'] // AVAX and USDC are native to Avalanche
     },
     bitcoin_testnet: {
       id: 'bitcoin_testnet',
@@ -64,7 +64,7 @@ export const config: Config = {
       id: 'arbitrum_sepolia',
       name: 'Arbitrum Sepolia',
       rpcUrl: 'https://sepolia-rollup.arbitrum.io/rpc',
-      supportedAssets: ['bitcoin', 'usdt'] // Bitcoin (wrapped) and USDT on Arbitrum
+      supportedAssets: ['bitcoin', 'usdc'] // Bitcoin (wrapped) and USDC on Arbitrum
     }
   }
 };
