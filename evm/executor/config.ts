@@ -18,8 +18,6 @@ export const EXECUTOR_CONFIG = {
   pollInterval: parseInt(process.env.POLL_INTERVAL || '2000'), // 2 seconds
   maxRetries: parseInt(process.env.MAX_RETRIES || '5'),
   retryDelay: parseInt(process.env.RETRY_DELAY || '5000'),
-  gasLimit: parseInt(process.env.GAS_LIMIT || '500000'),
-  gasPrice: process.env.GAS_PRICE || 'auto'
 };
 
 // Wallet Configuration
@@ -31,21 +29,6 @@ export const WALLET_CONFIG = {
   arbitrumRpcUrl: process.env.ARBITRUM_RPC_URL || 'https://arb1.arbitrum.io/rpc'
 };
 
-// // Contract Addresses
-// export const CONTRACT_ADDRESSES = {
-//   atomicSwap: process.env.ATOMIC_SWAP_ADDRESS || '',
-//   htlc: process.env.HTLC_ADDRESS || ''
-// };
-
-// Validation
 if (!WALLET_CONFIG.privateKey) {
   throw new Error('EVM_PRIVATE_KEY environment variable is required');
 }
-
-// if (!CONTRACT_ADDRESSES.atomicSwap) {
-//   throw new Error('ATOMIC_SWAP_ADDRESS environment variable is required');
-// }
-
-// if (!CONTRACT_ADDRESSES.htlc) {
-//   throw new Error('HTLC_ADDRESS environment variable is required');
-// }
