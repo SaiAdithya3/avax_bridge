@@ -42,7 +42,66 @@ The server will start on `http://127.0.0.1:3000`
 ## API Endpoints
 
 - `GET /health` - Returns "Online" status
-- `POST /orders` - Creates a new order (accepts MatchedOrder JSON)
+- `POST /orders` - Creates a new order (accepts simplified CreateOrder JSON, automatically generates MatchedOrder)
+
+## Create Order Format
+
+The `/orders` endpoint accepts a simplified JSON format:
+
+```json
+{
+  "from": "bitcoin_testnet:btc",
+  "to": "avalanche_testnet:avax", 
+  "source_amount": "0.001",
+  "destination_amount": "0.1",
+  "initiator_source_address": "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+  "initiator_destination_address": "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6",
+  "secret_hash": "a1b2c3d4e5f6789012345678901234567890abcdef",
+  "bitcoin_optional_recipient": "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh"
+}
+```
+
+### Field Descriptions:
+- `from`: Source chain and asset in format `"chain:asset"` (e.g., `"bitcoin_testnet:btc"`)
+- `to`: Destination chain and asset in format `"chain:asset"` (e.g., `"avalanche_testnet:avax"`)
+- `source_amount`: Amount to swap from source chain
+- `destination_amount`: Amount to receive on destination chain
+- `initiator_source_address`: User's address on source chain
+- `initiator_destination_address`: User's address on destination chain
+- `secret_hash`: Hash of the secret for the atomic swap
+- `bitcoin_optional_recipient`: Optional Bitcoin recipient address
+
+**Note:** The `create_id` is automatically generated as a random 32-byte hex string by the server and does not need to be provided by the user.
+
+## API Response Format
+
+All API endpoints (except `/health`) follow this standardized response format:
+
+```typescript
+interface Response<T> {
+    status: "ok" | "error";
+    result?: T;
+    error?: string;
+}
+```
+
+### Success Response Example:
+```json
+{
+  "status": "ok",
+  "result": {
+    "create_id": "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456"
+  }
+}
+```
+
+### Error Response Example:
+```json
+{
+  "status": "error",
+  "error": "Failed to get matched order: Invalid source chain"
+}
+```
 
 ## MongoDB Configuration
 

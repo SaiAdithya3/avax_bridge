@@ -1,0 +1,36 @@
+{
+  "chains": {
+    "avalanche_testnet": {
+      "executor_address": "0xe62a2b235f7bB86C1122313153824D54E6137e77",
+      "rpc_url": "https://avax-fuji.g.alchemy.com/v2/GE3ckFWo2EhIEsrrYkc55",
+      "registry_address": "0x66F20a5Fbf43e4B36Ac9e2D9DE33E8B8cAfD3ab7",
+      "relay_private_key": "639ed7560cbdde79096973912f5c83de86ba08aef2ce6f673dad5bf0a1663801",
+      "assets": [
+        {
+          "id": "usdc",
+          "atomic_swap_address": "0x6B1c656ad724C246049EF586Fa35D217A8db13A0",
+          "token_address": "0xeffc83AC0Da8EC6C91CDe640d35eFB0D10c2E112"
+        }
+      ],
+      "source_timelock": 48539,
+      "destination_timelock": 4045,
+      "chain_id": "43113"
+    },
+    "arbitrum_sepolia": {
+      "executor_address": "0xe62a2b235f7bB86C1122313153824D54E6137e77",
+      "rpc_url": "https://arb-sepolia.g.alchemy.com/v2/GE3ckFWo2EhIEsrrYkc55",
+      "registry_address": "0x66F20a5Fbf43e4B36Ac9e2D9DE33E8B8cAfD3ab7",
+      "relay_private_key": "639ed7560cbdde79096973912f5c83de86ba08aef2ce6f673dad5bf0a1663801",
+      "assets": [
+        {
+          "id": "usdc",
+          "atomic_swap_address": "0x6B1c656ad724C246049EF586Fa35D217A8db13A0",
+          "token_address": "0xeffc83AC0Da8EC6C91CDe640d35eFB0D10c2E112"
+        }
+      ],
+      "source_timelock": 36000,
+      "destination_timelock": 3600,
+      "chain_id": "421614"
+    }
+  }
+}

@@ -4,17 +4,35 @@ use axum::{
     extract::State,
     Json,
 };
-use std::net::SocketAddr;
+use std::{collections::HashMap, net::SocketAddr, str::FromStr};
 use mongodb::{Client, Database, IndexModel, bson::doc};
 use anyhow::Result;
 use tracing::{error, info};
 mod primitives;
-use primitives::MatchedOrder;
+mod config;
+mod services;
+// mod bitcoin_htlc;
+use primitives::{MatchedOrder, CreateOrder, Response, CreateOrderResult};
+use config::AppConfig;
+use services::OrderService;
+use alloy::{
+    hex::FromHex, network::EthereumWallet, primitives::{Address, FixedBytes}, providers::{fillers::{ChainIdFiller, GasFiller, JoinFill, NonceFiller, SimpleNonceManager, WalletFiller}, Identity, ProviderBuilder, RootProvider}, signers::local::PrivateKeySigner, sol, transports::http::reqwest::Url
+};
 
-// Handler state to hold MongoDB connection
+use crate::HTLCRegistry::HTLCRegistryInstance;
+
+
+sol!(
+    #[sol(rpc)]
+    HTLCRegistry,
+    "src/abi/registry.json",
+);
+
+
 #[derive(Clone)]
 struct AppState {
     db: Database,
+    order_service: OrderService
 }
 
 async fn health_check(State(_state): State<AppState>) -> &'static str {
@@ -23,28 +41,39 @@ async fn health_check(State(_state): State<AppState>) -> &'static str {
 
 async fn create_order(
     State(state): State<AppState>,
-    Json(matched_order): Json<MatchedOrder>,
-) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {    
+    Json(create_order): Json<CreateOrder>,
+) -> Result<Json<Response<CreateOrderResult>>, (axum::http::StatusCode, Json<Response<()>>)> {    
+            let matched_order = match state.order_service.get_matched_order(create_order).await {
+        Ok(order) => order,
+        Err(e) => {
+            error!("Failed to get matched order: {}", e);
+            return Err((
+                axum::http::StatusCode::BAD_REQUEST,
+                Json(Response::<()>::error(format!("Failed to get matched order: {}", e)))
+            ));
+        }
+    };
+    
     let orders_collection = state.db.collection::<MatchedOrder>("orders");
     
     match orders_collection.insert_one(&matched_order, None).await {
-        Ok(result) => {
-            info!("Order created : {:?}", result.inserted_id);
-            Ok(Json(serde_json::json!({
-                "success": true,
-                "message": "Order created successfully",
-                "order_id": result.inserted_id
+        Ok(_result) => {
+            let create_id = matched_order.create_order.create_id.clone().unwrap_or_else(|| "unknown".to_string());
+            info!("Order created: {:?}", create_id);
+            Ok(Json(Response::success(CreateOrderResult {
+                create_id,
             })))
         }
         Err(e) => {
-            error!("Failed to create order: {}", e);
+            error!("Failed to insert order into database: {}", e);
             Err((
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to create order: {}", e)
+                Json(Response::<()>::error("Internal server error".to_string()))
             ))
         }
     }
 }
+
 
 async fn setup_mongodb() -> Result<Database> {
     // Connect to MongoDB (default: localhost:27017)
@@ -119,6 +148,17 @@ async fn migrate_schema(db: &Database) -> Result<()> {
     Ok(())
 }
 
+pub type AlloyProvider = alloy::providers::fillers::FillProvider<
+    JoinFill<
+        JoinFill<
+            JoinFill<JoinFill<Identity, GasFiller>, NonceFiller<SimpleNonceManager>>,
+            ChainIdFiller,
+        >,
+        WalletFiller<EthereumWallet>,
+    >,
+    RootProvider,
+>;
+
 #[tokio::main]
 async fn main() -> Result<()> {
 
@@ -131,8 +171,38 @@ async fn main() -> Result<()> {
     // Run schema migration
     migrate_schema(&db).await?;
     
+    // Load configuration from file
+    let config = AppConfig::from_file("config.json")
+        .map_err(|e| {
+            error!("Failed to load config: {}", e);
+            e
+        })?;
+
+    let mut evm_registries: HashMap<String, HTLCRegistryInstance<AlloyProvider>> = HashMap::new();
+
+    for (chain_id, chain_config) in config.chains.clone() {
+        let signer = PrivateKeySigner::from_bytes(
+            &FixedBytes::from_hex(chain_config.relay_private_key).expect("Invalid executor private key"),
+        )
+        .unwrap();
+        let wallet = EthereumWallet::from(signer.clone());
+
+        let provider =     ProviderBuilder::new()
+            .disable_recommended_fillers()
+            .with_gas_estimation()
+            .with_simple_nonce_management()
+            .fetch_chain_id()
+            .wallet(wallet)
+            .connect_http(Url::parse(&chain_config.rpc_url).unwrap());
+
+        let registry = HTLCRegistryInstance::new(Address::from_str(&chain_config.registry_address).unwrap(), provider);
+        evm_registries.insert(chain_id, registry);
+    }
+
+    // Create order service
+    let order_service = OrderService::new(config.clone(), evm_registries);
     // Create app state
-    let state = AppState { db };
+    let state = AppState { db, order_service };
     
     // Build our application with routes and state
     let app = Router::new()

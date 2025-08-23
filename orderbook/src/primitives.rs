@@ -51,21 +51,16 @@ where
 pub struct CreateOrder {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
-    pub source_chain: String,
-    pub destination_chain: String,
-    pub source_asset: String,
-    pub destination_asset: String,
+    pub from: String, // Format: "chain:asset" e.g., "bitcoin_testnet:btc"
+    pub to: String,   // Format: "chain:asset" e.g., "avalanche_testnet:avax"
     pub source_amount: String,
     pub destination_amount: String,
     pub initiator_source_address: String,
     pub initiator_destination_address: String,
     pub secret_hash: String,
-    #[serde(deserialize_with = "deserialize_datetime")]
-    pub created_at: DateTime,
-    pub create_id: String,
-    pub input_token_price: f64,
-    pub output_token_price: f64,
     pub bitcoin_optional_recipient: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub create_id: Option<String>, // Generated automatically by the service
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,14 +89,16 @@ pub struct Swap {
     pub redeemer: String,
     pub filled_amount: String,
     pub amount: String,
+    pub timelock: i32,
     pub secret_hash: String,
-    pub secret: String,
+    pub secret: Option<String>,
     pub initiate_tx_hash: Option<String>,
     pub redeem_tx_hash: Option<String>,
     pub refund_tx_hash: Option<String>,
     pub initiate_block_number: Option<String>,
     pub redeem_block_number: Option<String>,
     pub refund_block_number: Option<String>,
+    pub deposit_address: Option<String>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -122,4 +119,43 @@ impl std::fmt::Display for Chain {
             Chain::AvalancheTestnet => write!(f, "avalanche_testnet"),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Response<T> {
+    pub status: ResponseStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<T>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ResponseStatus {
+    Ok,
+    Error,
+}
+
+impl<T> Response<T> {
+    pub fn success(result: T) -> Self {
+        Self {
+            status: ResponseStatus::Ok,
+            result: Some(result),
+            error: None,
+        }
+    }
+    
+    pub fn error(error: String) -> Self {
+        Self {
+            status: ResponseStatus::Error,
+            result: None,
+            error: Some(error),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateOrderResult {
+    pub create_id: String,
 }
