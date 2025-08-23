@@ -6,7 +6,8 @@ import { useOrdersStore } from '../store/ordersStore';
 import { API_URLS } from '../constants/constants';
 import OrderDetails from './OrderDetails';
 import type { Order } from '../types/api';
-// Asset and chain logo URLs (not JSX)
+import { useAssetsStore } from '../store/assetsStore';
+
 const ASSET_LOGOS: Record<string, string> = {
   wbtc: "https://garden.imgix.net/token-images/wbtc.svg",
   avax: "https://garden.imgix.net/token-images/avax.svg",
@@ -15,9 +16,9 @@ const ASSET_LOGOS: Record<string, string> = {
 };
 
 const CHAIN_LOGOS: Record<string, string> = {
-  'Arbitrum Sepolia': "https://garden.imgix.net/chain_images/arbitrumSepolia.svg",
-  'Avalanche Testnet': "https://garden.imgix.net/token-images/avax.svg",
-  'Bitcoin Testnet': "https://garden.imgix.net/token-images/bitcoin.svg",
+  'arbitrum sepolia': "https://garden.imgix.net/chain_images/arbitrumSepolia.svg",
+  'avalanche testnet': "https://garden.imgix.net/token-images/avax.svg",
+  'bitcoin testnet': "https://garden.imgix.net/token-images/bitcoin.svg",
 };
 
 function getAssetLogo(symbol: string) {
@@ -46,7 +47,6 @@ function getAssetLogo(symbol: string) {
 }
 
 function getChainLogo(chainName: string) {
-  console.log("chainName", chainName)
   const url = CHAIN_LOGOS[chainName];
   if (url) {
     return (
@@ -80,6 +80,7 @@ const UserOrders: React.FC = () => {
   const [filteredOrders, setFilteredOrders] = useState<(Order & {status: OrderStatus})[]>([]);
   const [isPolling, setIsPolling] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const { assets } = useAssetsStore();
 
   // Status filter options
   const statusOptions: Array<{ value: OrderStatus | 'all'; label: string; count: number }> = [
@@ -219,13 +220,13 @@ const UserOrders: React.FC = () => {
   };
 
   // Helper function to format amount
-  const formatAmount = (amount: string): string => {
-    const num = parseFloat(amount);
-    if (isNaN(num)) return '0';
-    return num.toLocaleString(undefined, { 
-      minimumFractionDigits: 2, 
-      maximumFractionDigits: 6 
-    });
+  const formatAmount = (amount: string, decimals: number) => {
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount)) return '0';
+    const formattedAmount = numAmount / Math.pow(10, decimals);
+    let str = formattedAmount.toFixed(decimals);
+    str = str.replace(/\.?0+$/, '');
+    return str;
   };
 
   // Helper function to format date
@@ -263,32 +264,34 @@ const UserOrders: React.FC = () => {
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
+    <div className="max-w-xl mx-auto p-6">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">My Orders</h1>
+        <h1 className="text-3xl font-semibold text-gray-900 mb-2">My Orders</h1>
         <p className="text-gray-600">Track your cross-chain atomic swaps</p>
       </div>
 
       {/* Status Filter */}
       <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mb-6">
-        <div className="flex flex-wrap gap-2">
-          {statusOptions.map((option) => (
-            <button
-              key={option.value}
-              onClick={() => setStatusFilter(option.value)}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
-                statusFilter === option.value
-                  ? 'bg-[#e84142] text-white shadow-lg'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              {option.label}
-              <span className="ml-2 bg-white/20 px-2 py-0.5 rounded-full text-xs">
-                {option.count}
-              </span>
-            </button>
-          ))}
+        <div className="w-full overflow-x-auto">
+          <div className="flex gap-2 justify-center min-w-max">
+            {statusOptions.map((option) => (
+              <button
+                key={option.value}
+                onClick={() => setStatusFilter(option.value)}
+                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 whitespace-nowrap ${
+                  statusFilter === option.value
+                    ? 'bg-[#e84142] text-white shadow-lg'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {option.label}
+                <span className="ml-2 bg-white/20 px-2 py-0.5 rounded-full text-xs">
+                  {option.count}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -376,37 +379,37 @@ const UserOrders: React.FC = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Source Asset */}
                     <div className="bg-gray-50 rounded-xl p-4">
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center justify-between mb-3">
                         <span className="text-sm font-medium text-gray-700">From</span>
                         <div className="flex items-center gap-2">
                           {getAssetLogo(sourceSymbol)}
                           <span className="font-semibold">{sourceSymbol}</span>
                         </div>
                       </div>
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-col items-start justify-between">
                         <div className="flex items-center gap-2">
                           {getChainLogo(sourceChainName)}
                           <span className="text-sm text-gray-600">{sourceChainName}</span>
                         </div>
-                        <span className="font-semibold text-lg">{formatAmount(order.source_swap.amount)}</span>
+                        <span className="font-semibold text-lg">{formatAmount(order.source_swap.amount, assets.find(a => a.asset.symbol === sourceSymbol)?.asset.decimals ?? 18)}</span>
                       </div>
                     </div>
 
                     {/* Destination Asset */}
                     <div className="bg-gray-50 rounded-xl p-4">
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center justify-between mb-3">
                         <span className="text-sm font-medium text-gray-700">To</span>
                         <div className="flex items-center gap-2">
                           {getAssetLogo(destinationSymbol)}
                           <span className="font-semibold">{destinationSymbol}</span>
                         </div>
                       </div>
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-col items-start justify-between">
                         <div className="flex items-center gap-2">
                           {getChainLogo(destinationChainName)}
                           <span className="text-sm text-gray-600">{destinationChainName}</span>
                         </div>
-                        <span className="font-semibold text-lg">{formatAmount(order.destination_swap.amount)}</span>
+                        <span className="font-semibold text-lg">{formatAmount(order.destination_swap.amount, assets.find(a => a.asset.symbol === destinationSymbol)?.asset.decimals ?? 18)}</span>
                       </div>
                     </div>
                   </div>
