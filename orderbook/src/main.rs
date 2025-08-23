@@ -44,7 +44,31 @@ async fn create_order(
     State(state): State<AppState>,
     Json(create_order): Json<CreateOrder>,
 ) -> Result<Json<Response<String>>, (axum::http::StatusCode, Json<Response<()>>)> {    
-            let matched_order = match state.order_service.get_matched_order(create_order).await {
+    // Check if any existing order has the same secret hash
+    let orders_collection = state.db.collection::<MatchedOrder>("orders");
+    let secret_hash_filter = doc! { "create_order.secret_hash": &create_order.secret_hash };
+    
+    match orders_collection.find_one(secret_hash_filter, None).await {
+        Ok(Some(_)) => {
+            // Found an existing order with the same secret hash
+            return Err((
+                axum::http::StatusCode::BAD_REQUEST,
+                Json(Response::<()>::error("An order with the same secret hash already exists".to_string()))
+            ));
+        }
+        Ok(None) => {
+            // No existing order with this secret hash, proceed
+        }
+        Err(e) => {
+            error!("Failed to check for duplicate secret hash: {}", e);
+            return Err((
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(Response::<()>::error("Internal server error".to_string()))
+            ));
+        }
+    }
+    
+    let matched_order = match state.order_service.get_matched_order(create_order).await {
         Ok(order) => order,
         Err(e) => {
             error!("Failed to get matched order: {}", e);
@@ -83,11 +107,9 @@ async fn get_order(
     
     match orders_collection.find_one(filter, None).await {
         Ok(Some(matched_order)) => {
-            info!("Order found: {:?}", order_id);
             Ok(Json(Response::success(matched_order)))
         }
         Ok(None) => {
-            info!("Order not found: {:?}", order_id);
             Err((
                 axum::http::StatusCode::NOT_FOUND,
                 Json(Response::<()>::error("Order not found".to_string()))
@@ -126,8 +148,6 @@ async fn get_orders_by_user(
             while let Ok(Some(order)) = cursor.try_next().await {
                 orders.push(order);
             }
-            
-            info!("Found {} orders for user: {:?}", orders.len(), user_id);
             Ok(Json(Response::success(orders)))
         }
         Err(e) => {
@@ -210,6 +230,19 @@ async fn migrate_schema(db: &Database) -> Result<()> {
         }
         Err(e) => return Err(e.into()),
     }
+    
+    // Create unique index for secret_hash to prevent duplicates
+    let unique_secret_hash_index = IndexModel::builder()
+        .keys(doc! { "create_order.secret_hash": 1 })
+        .options(mongodb::options::IndexOptions::builder().unique(true).build())
+        .build();
+    match orders_collection.create_index(unique_secret_hash_index, None).await {
+        Ok(_) => {},
+        Err(e) if e.to_string().contains("IndexKeySpecsConflict") || e.to_string().contains("already exists") => {
+        }
+        Err(e) => return Err(e.into()),
+    }
+    
     Ok(())
 }
 

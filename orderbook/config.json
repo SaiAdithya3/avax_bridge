@@ -1,5 +1,21 @@
 {
   "chains": {
+    "bitcoin_testnet": {
+      "executor_address": "4c77d732a1331bfcbf2acfca28ebf661ee87d2a490e269b2ebb96c153f256202",
+      "rpc_url": "https://testnet.blockchain.info/testnet/rpc",
+      "registry_address": "0x66F20a5Fbf43e4B36Ac9e2D9DE33E8B8cAfD3ab7",
+      "relay_private_key": "639ed7560cbdde79096973912f5c83de86ba08aef2ce6f673dad5bf0a1663801",
+      "assets": [
+        {
+          "id": "btc",
+          "atomic_swap_address": "primary",
+          "token_address": "primary"
+        }
+      ],
+      "source_timelock": 144,
+      "destination_timelock": 12,
+      "chain_id": "1"
+    },
     "avalanche_testnet": {
       "executor_address": "0xe62a2b235f7bB86C1122313153824D54E6137e77",
       "rpc_url": "https://avax-fuji.g.alchemy.com/v2/GE3ckFWo2EhIEsrrYkc55",

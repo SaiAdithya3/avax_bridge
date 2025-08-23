@@ -1,13 +1,12 @@
+use crate::bitcoin_htlc::{get_htlc_address, HTLCParams};
 use crate::config::AppConfig;
 use crate::primitives::{CreateOrder, MatchedOrder, Swap, Chain};
 use crate::AlloyProvider;
 use crate::HTLCRegistry::HTLCRegistryInstance;
 use alloy::hex::FromHex;
 use alloy::primitives::{Address, FixedBytes, U256};
-// use crate::bitcoin_htlc::{get_htlc_address, HTLCParams};
-// use bitcoin::{Network, XOnlyPublicKey};
 use anyhow::{Result, anyhow};
-use uuid::Uuid;
+use bitcoin::{Network, XOnlyPublicKey};
 use std::collections::HashMap;
 use std::str::FromStr;
 use mongodb::bson::DateTime;
@@ -15,7 +14,21 @@ use rand::Rng;
 use num_bigint::BigUint;
 use sha2::{Sha256, Digest};
 
+pub enum SupportedChain {
+    Evm,
+    Bitcoin,
+}
 
+impl SupportedChain {
+    pub fn from_chain_identifier(chain_identifier: &str) -> Result<Self> {
+        match chain_identifier {
+            "arbitrum_sepolia" => Ok(SupportedChain::Evm),
+            "avalanche_testnet" => Ok(SupportedChain::Evm),
+            "bitcoin_testnet" => Ok(SupportedChain::Bitcoin),
+            _ => Err(anyhow!("Invalid chain identifier: {}", chain_identifier)),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct OrderService {
@@ -59,12 +72,19 @@ impl OrderService {
         let dest_chain_enum = Chain::from_str(&dest_chain)
             .map_err(|_| anyhow!("Invalid destination chain: {}", dest_chain))?;
         
+        // Validate bitcoin_optional_recipient is provided if either chain is Bitcoin
+        if !Self::is_evm_chain(&source_chain_enum) || !Self::is_evm_chain(&dest_chain_enum) {
+            if create_order.bitcoin_optional_recipient.is_none() {
+                return Err(anyhow!("bitcoin_optional_recipient is required when either source or destination chain is Bitcoin"));
+            }
+        }
+        
         // Generate current timestamp
         let now = DateTime::now();
         
         // Set the generated create_id on the CreateOrder
         create_order.create_id = Some(create_id.clone());
-
+        
         // Generate source swap ID based on chain type
         let source_swap_id = if Self::is_evm_chain(&source_chain_enum) {
             self.generate_evm_swap_id(
@@ -77,11 +97,20 @@ impl OrderService {
                 &source_asset_config.atomic_swap_address,
             ).map_err(|e| anyhow!("Failed to generate source swap id: {}", e))?
         } else {
-            format!("swap_src_{}", Uuid::new_v4().to_string().split('-').next().unwrap_or("placeholder"))
+            // For Bitcoin chains, swap_id will be set to deposit_address after it's generated
+            "".to_string()
         };
 
-        let source_deposit_address = if Self::is_evm_chain(&source_chain_enum) {
-            self.generate_deposit_address(
+
+        let source_chain_type = SupportedChain::from_chain_identifier(&source_chain)?;
+        let source_deposit_address = match source_chain_type {
+            SupportedChain::Bitcoin => Self::get_bitcoin_deposit_address(
+                &create_order.secret_hash,
+                &create_order.initiator_source_address,
+                &source_chain_config.executor_address,
+                source_chain_config.source_timelock,
+            ).await?,
+            SupportedChain::Evm => self.get_evm_deposit_address(
                 &source_asset_config.token_address,
                 &source_chain,
                 &create_order.secret_hash,
@@ -89,16 +118,38 @@ impl OrderService {
                 &source_chain_config.executor_address,
                 source_chain_config.source_timelock,
                 &create_order.source_amount,
-                &source_asset_config.atomic_swap_address,
             ).await?
-        } else {
-            None
+        };
+
+
+        let destination_chain_type = SupportedChain::from_chain_identifier(&dest_chain)?;
+        let destination_deposit_address = match destination_chain_type {
+            SupportedChain::Bitcoin => Self::get_bitcoin_deposit_address(
+                &create_order.secret_hash,
+                &create_order.initiator_destination_address,
+                &dest_chain_config.executor_address,
+                dest_chain_config.destination_timelock,
+            ).await?,
+            SupportedChain::Evm => self.get_evm_deposit_address(
+                &dest_asset_config.token_address,
+                &dest_chain,
+                &create_order.secret_hash,
+                &create_order.initiator_destination_address,
+                &dest_chain_config.executor_address,
+                dest_chain_config.destination_timelock,
+                &create_order.destination_amount,
+            ).await?
         };
 
         let source_swap = Swap {
             _id: None, // Will be set by MongoDB
             created_at: now,
-            swap_id: source_swap_id,
+            swap_id: if Self::is_evm_chain(&source_chain_enum) {
+                source_swap_id
+            } else {
+                // For Bitcoin chains, use deposit_address as swap_id
+                source_deposit_address.clone()
+            },
             chain: source_chain_enum,
             asset: source_asset.clone(),
             htlc_address: source_asset_config.atomic_swap_address.clone(),
@@ -116,7 +167,7 @@ impl OrderService {
             initiate_block_number: None, // Empty at beginning
             redeem_block_number: None, // Empty at beginning
             refund_block_number: None, // Empty at beginning
-            deposit_address : source_deposit_address
+            deposit_address : Some(source_deposit_address)
         };
         
         // Generate destination swap ID based on chain type
@@ -131,13 +182,19 @@ impl OrderService {
                 &dest_asset_config.atomic_swap_address,
             )?
         } else {
-            format!("swap_dest_{}", Uuid::new_v4().to_string().split('-').next().unwrap_or("placeholder"))
+            // For Bitcoin chains, swap_id will be set to deposit_address after it's generated
+            "".to_string()
         };
 
         let destination_swap = Swap {
             _id: None, // Will be set by MongoDB
             created_at: now,
-            swap_id: dest_swap_id,
+            swap_id: if Self::is_evm_chain(&dest_chain_enum) {
+                dest_swap_id
+            } else {
+                // For Bitcoin chains, use deposit_address as swap_id
+                destination_deposit_address.clone()
+            },
             chain: dest_chain_enum,
             asset: dest_asset.clone(),
             htlc_address: dest_asset_config.atomic_swap_address.clone(),
@@ -155,7 +212,7 @@ impl OrderService {
             initiate_block_number: None, // Empty at beginning
             redeem_block_number: None, // Empty at beginning
             refund_block_number: None, // Empty at beginning
-            deposit_address : None
+            deposit_address : Some(destination_deposit_address)
         };
         
         // Create the complete MatchedOrder
@@ -274,7 +331,37 @@ impl OrderService {
         }
     }
 
-    async fn generate_deposit_address(
+    async fn get_bitcoin_deposit_address(
+        secret_hash: &str,
+        initiator: &str,
+        redeemer: &str,
+        timelock: i32,
+    ) -> Result<String> {
+        let secret_hash_bytes = hex::decode(secret_hash.strip_prefix("0x").unwrap_or(secret_hash))?;
+        if secret_hash_bytes.len() != 32 {
+            return Err(anyhow!("Secret hash must be 32 bytes, got {}", secret_hash_bytes.len()));
+        }
+        
+        let mut secret_hash_array = [0u8; 32];
+        secret_hash_array.copy_from_slice(&secret_hash_bytes);
+        
+        let initiator_pubkey = XOnlyPublicKey::from_str(initiator)
+            .map_err(|_| anyhow!("Invalid initiator public key: {}", initiator))?;
+        let redeemer_pubkey = XOnlyPublicKey::from_str(redeemer)
+            .map_err(|_| anyhow!("Invalid redeemer public key: {}", redeemer))?;
+        
+        let htlc_params = HTLCParams {
+            secret_hash: secret_hash_array,
+            redeemer_pubkey,
+            initiator_pubkey,
+            timelock: timelock as u32,
+        };
+        
+        let bitcoin_address = get_htlc_address(&htlc_params, Network::Testnet4).map_err(|e| anyhow!("Failed to generate Bitcoin HTLC address: {}", e))?;
+        Ok(bitcoin_address.to_string())
+    }
+
+    async fn get_evm_deposit_address(
         &self,
         token: &str,
         chain_identifier: &str,
@@ -283,40 +370,7 @@ impl OrderService {
         redeemer: &str,
         timelock: i32,
         amount: &str,
-        _htlc_address: &str,
-    ) -> Result<Option<String>> {
-        // // Determine if this is a Bitcoin chain
-        // let is_bitcoin = chain_id == "18332"; // Bitcoin testnet chain ID
-        
-        // if is_bitcoin {
-        //     // Generate Bitcoin HTLC address
-        //     let secret_hash_bytes = hex::decode(secret_hash.strip_prefix("0x").unwrap_or(secret_hash))?;
-        //     if secret_hash_bytes.len() != 32 {
-        //         return Err(anyhow!("Secret hash must be 32 bytes, got {}", secret_hash_bytes.len()));
-        //     }
-            
-        //     let mut secret_hash_array = [0u8; 32];
-        //     secret_hash_array.copy_from_slice(&secret_hash_bytes);
-            
-        //     // For Bitcoin, we need to derive public keys from addresses
-        //     // This is a simplified approach - in production you'd need proper key derivation
-        //     let initiator_pubkey = XOnlyPublicKey::from_str(initiator)
-        //         .map_err(|_| anyhow!("Invalid initiator public key: {}", initiator))?;
-        //     let redeemer_pubkey = XOnlyPublicKey::from_str(redeemer)
-        //         .map_err(|_| anyhow!("Invalid redeemer public key: {}", redeemer))?;
-            
-        //     let htlc_params = HTLCParams {
-        //         secret_hash: secret_hash_array,
-        //         redeemer_pubkey,
-        //         initiator_pubkey,
-        //         timelock: timelock as u32,
-        //     };
-            
-        //     let bitcoin_address = get_htlc_address(&htlc_params, Network::Testnet).map_err(|e| anyhow!("Failed to generate Bitcoin HTLC address: {}", e))?;
-        //     Ok(Some(bitcoin_address.to_string()))
-        // } else {
-            // For EVM chains, generate a deterministic placeholder deposit address
-            // In the real implementation, this would call the registry contract
+    ) -> Result<String> {
             let token_address = Address::from_str(token).map_err(|e| anyhow!("Invalid token address: {}", e))?;
             let refund_address = Address::from_str(initiator).map_err(|e| anyhow!("Invalid redeemer address: {}", e))?;
             let redeemer_address = Address::from_str(redeemer).map_err(|e| anyhow!("Invalid redeemer address: {}", e))?;
@@ -325,8 +379,7 @@ impl OrderService {
             let amount = U256::from_str(amount).map_err(|e| anyhow!("Invalid amount: {}", e))?;
             let secret_hash_bytes = FixedBytes::from_hex(secret_hash)?;
             let deposit_address = registry.getERC20Address(token_address, refund_address, redeemer_address, timelock, amount, secret_hash_bytes).call().await?;
-            Ok(Some(deposit_address.to_string()))
-        // }
+            Ok(deposit_address.to_string())
     }
 }
 
