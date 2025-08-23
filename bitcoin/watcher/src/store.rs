@@ -1,3 +1,4 @@
+use primitives::types::MatchedOrder;
 use primitives::types::Swap;
 use primitives::types::Chain;
 use serde::{Deserialize, Serialize};
@@ -6,7 +7,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use anyhow::Result;
 use std::clone::Clone;
-use mongodb::{Client, Collection, Database, Cursor};
+use mongodb::{Client, Collection, Database};
 use mongodb::bson::{doc, DateTime};
 use chrono::Utc;
 use futures::stream::StreamExt;
@@ -55,25 +56,22 @@ pub struct BitcoinStore {
 }
 
 impl BitcoinStore {
-    pub fn new(config: BitcoinConfig) -> Self {
-        Self {
+    pub async fn new(config: BitcoinConfig) -> Result<Self> {
+        let client = Client::with_uri_str(&config.mongodb_uri).await?;
+        let db = client.database(&config.database_name);
+        
+        Ok(Self {
             htlc_params: Arc::new(RwLock::new(HashMap::new())),
             config,
-            db: None,
-        }
+            db: Some(db),
+        })
     }
 
-    pub async fn connect_mongodb(&mut self) -> Result<()> {
-        let client = Client::with_uri_str(&self.config.mongodb_uri).await?;
-        let db = client.database(&self.config.database_name);
-        self.db = Some(db);
-        log::info!("Connected to MongoDB database: {}", self.config.database_name);
-        Ok(())
-    }
 
-    fn get_swaps_collection(&self) -> Result<Collection<Swap>> {
+
+    fn get_swaps_collection(&self) -> Result<Collection<MatchedOrder>> {
         if let Some(db) = &self.db {
-            Ok(db.collection::<Swap>("swaps"))
+            Ok(db.collection::<MatchedOrder>("orders"))
         } else {
             Err(anyhow::anyhow!("MongoDB not connected"))
         }
@@ -124,76 +122,116 @@ impl BitcoinStore {
     }
 
     pub async fn get_active_swaps(&self) -> Result<Vec<Swap>> {
-        // Try to get from MongoDB first
-        if let Ok(collection) = self.get_swaps_collection() {
-            let seven_days_ago = DateTime::from_millis(
-                (Utc::now() - chrono::Duration::days(7)).timestamp_millis()
-            );
-            
+        match self.get_swaps_collection() {
+            Ok(collection) => {
+            // testing number of matched orders we receive
+            let count = collection.count_documents(doc! {}).await?;
+            tracing::info!("Number of matched orders: {}", count);
+
+            // Query for MatchedOrder documents where either source_swap or destination_swap is Bitcoin
+            // Pick up swaps that have no inits OR have inits but no redeems/refunds
             let filter = doc! {
-                "chain": "bitcoin_testnet",
-                "asset": "BTC",
-                "amount": { "$gt": "0" },
-                "redeem_block_number": { "$exists": false },
-                "refund_block_number": { "$exists": false },
-                "created_at": { "$gte": seven_days_ago }
+                "$or": [
+                    {
+                        "source_swap.chain": "bitcoin_testnet",
+                        "source_swap.asset": "btc",
+                        "$and": [
+                            {
+                                "$or": [
+                                    { "source_swap.redeem_block_number": { "$exists": false } },
+                                    { "source_swap.redeem_block_number": null }
+                                ]
+                            },
+                            {
+                                "$or": [
+                                    { "source_swap.refund_block_number": { "$exists": false } },
+                                    { "source_swap.refund_block_number": null }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "destination_swap.chain": "bitcoin_testnet",
+                        "destination_swap.asset": "btc",
+                        "$and": [
+                            {
+                                "$or": [
+                                    { "destination_swap.redeem_block_number": { "$exists": false } },
+                                    { "destination_swap.redeem_block_number": null }
+                                ]
+                            },
+                            {
+                                "$or": [
+                                    { "destination_swap.refund_block_number": { "$exists": false } },
+                                    { "destination_swap.refund_block_number": null }
+                                ]
+                            }
+                        ]
+                    }
+                ]
             };
             
             let mut cursor = collection.find(filter).await?;
             let mut swaps = Vec::new();
             
-            while let Some(swap) = cursor.next().await {
-                swaps.push(swap?);
+            while let Some(matched_order) = cursor.next().await {
+                let matched_order = matched_order?;
+                // Check if source_swap is Bitcoin
+                if matches!(matched_order.source_swap.chain, Chain::BitcoinTestnet) {
+                    swaps.push(matched_order.source_swap);
+                }
+                
+                // Check if destination_swap is Bitcoin
+                if matches!(matched_order.destination_swap.chain, Chain::BitcoinTestnet) {
+                    swaps.push(matched_order.destination_swap);
+                }
             }
             
-            log::info!("Found {} active swaps from MongoDB", swaps.len());
+            log::info!("Found {} active Bitcoin swaps from MongoDB", swaps.len());
             return Ok(swaps);
+            }
+            Err(e) => {
+                log::warn!("Error getting active swaps: {}", e);
+                return Err(e);
+            }
         }
-        
-        // Fallback to mock data if MongoDB is not available
-        log::warn!("MongoDB not available, using mock data");
-        let current_time = DateTime::from_millis(Utc::now().timestamp_millis());
-        
-        let mock_swaps = vec![
-            Swap {
-                id: None,
-                created_at: current_time,
-                swap_id: "tb1py2rxn9f2zq0s6h2jpu8tpvyu4zvh4uusvaztfvh4k39asyr93f6sp5qc4e".to_string(),
-                chain: Chain::BitcoinTestnet,
-                asset: "BTC".to_string(),
-                htlc_address: "tb1py2rxn9f2zq0s6h2jpu8tpvyu4zvh4uusvaztfvh4k39asyr93f6sp5qc4e".to_string(),
-                token_address: "0x0000000000000000000000000000000000000000".to_string(),
-                initiator: "460f2e8ff81fc4e0a8e6ce7796704e3829e3e3eedb8db9390bdc51f4f04cf0a6".to_string(),
-                redeemer: "be4b9e8e8c0146b155d3ce35d0e3dfef1c99ef598b63e00524a912dd21480bce".to_string(),
-                filled_amount: "997000".to_string(),
-                amount: "997000".to_string(),
-                secret_hash: "731170d859f81a395a79e02cf3812e413b21793900e70ff77e48dfcf7ef6a4e6".to_string(),
-                secret: "".to_string(),
-                initiate_tx_hash: None,
-                redeem_tx_hash: None,
-                refund_tx_hash: None,
-                initiate_block_number: None,
-                redeem_block_number: None,
-                refund_block_number: None,
-            },
-        ];
-        
-        Ok(mock_swaps)
     }
 
     pub async fn update_swap_initiate(&self, swap_id: &str, initiate_tx_hash: &str, filled_amount: &str, initiate_block_number: &str) -> Result<()> {
         if let Ok(collection) = self.get_swaps_collection() {
-            let filter = doc! { "swap_id": swap_id };
-            let update = doc! {
-                "$set": {
-                    "initiate_tx_hash": initiate_tx_hash,
-                    "filled_amount": filled_amount,
-                    "initiate_block_number": initiate_block_number
-                }
+            // Find the MatchedOrder document that contains this swap_id
+            let filter = doc! {
+                "$or": [
+                    { "source_swap.swap_id": swap_id },
+                    { "destination_swap.swap_id": swap_id }
+                ]
             };
             
-            let result = collection.update_one(filter, update).await?;
-            log::info!("Updated swap {} initiate in MongoDB: {} documents modified", swap_id, result.modified_count);
+            // First, find the document to determine which swap to update
+            if let Some(matched_order) = collection.find_one(filter.clone()).await? {
+                let update = if matched_order.source_swap.swap_id == swap_id {
+                    doc! {
+                        "$set": {
+                            "source_swap.initiate_tx_hash": initiate_tx_hash,
+                            "source_swap.filled_amount": filled_amount,
+                            "source_swap.initiate_block_number": initiate_block_number
+                        }
+                    }
+                } else {
+                    doc! {
+                        "$set": {
+                            "destination_swap.initiate_tx_hash": initiate_tx_hash,
+                            "destination_swap.filled_amount": filled_amount,
+                            "destination_swap.initiate_block_number": initiate_block_number
+                        }
+                    }
+                };
+                
+                let result = collection.update_one(filter, update).await?;
+                log::info!("Updated swap {} initiate in MongoDB: {} documents modified", swap_id, result.modified_count);
+            } else {
+                log::warn!("No MatchedOrder found for swap_id: {}", swap_id);
+            }
         } else {
             log::info!("Updated swap {} initiate: tx_hash={}, amount={}, block={}", 
                 swap_id, initiate_tx_hash, filled_amount, initiate_block_number);
@@ -203,17 +241,39 @@ impl BitcoinStore {
 
     pub async fn update_swap_redeem(&self, swap_id: &str, redeem_tx_hash: &str, redeem_block_number: &str, secret: &str) -> Result<()> {
         if let Ok(collection) = self.get_swaps_collection() {
-            let filter = doc! { "swap_id": swap_id };
-            let update = doc! {
-                "$set": {
-                    "redeem_tx_hash": redeem_tx_hash,
-                    "redeem_block_number": redeem_block_number,
-                    "secret": secret
-                }
+            // Find the MatchedOrder document that contains this swap_id
+            let filter = doc! {
+                "$or": [
+                    { "source_swap.swap_id": swap_id },
+                    { "destination_swap.swap_id": swap_id }
+                ]
             };
             
-            let result = collection.update_one(filter, update).await?;
-            log::info!("Updated swap {} redeem in MongoDB: {} documents modified", swap_id, result.modified_count);
+            // First, find the document to determine which swap to update
+            if let Some(matched_order) = collection.find_one(filter.clone()).await? {
+                let update = if matched_order.source_swap.swap_id == swap_id {
+                    doc! {
+                        "$set": {
+                            "source_swap.redeem_tx_hash": redeem_tx_hash,
+                            "source_swap.redeem_block_number": redeem_block_number,
+                            "source_swap.secret": secret
+                        }
+                    }
+                } else {
+                    doc! {
+                        "$set": {
+                            "destination_swap.redeem_tx_hash": redeem_tx_hash,
+                            "destination_swap.redeem_block_number": redeem_block_number,
+                            "destination_swap.secret": secret
+                        }
+                    }
+                };
+                
+                let result = collection.update_one(filter, update).await?;
+                log::info!("Updated swap {} redeem in MongoDB: {} documents modified", swap_id, result.modified_count);
+            } else {
+                log::warn!("No MatchedOrder found for swap_id: {}", swap_id);
+            }
         } else {
             log::info!("Updated swap {} redeem: tx_hash={}, block={}, secret={}", 
                 swap_id, redeem_tx_hash, redeem_block_number, secret);
@@ -223,16 +283,37 @@ impl BitcoinStore {
 
     pub async fn update_swap_refund(&self, swap_id: &str, refund_tx_hash: &str, refund_block_number: &str) -> Result<()> {
         if let Ok(collection) = self.get_swaps_collection() {
-            let filter = doc! { "swap_id": swap_id };
-            let update = doc! {
-                "$set": {
-                    "refund_tx_hash": refund_tx_hash,
-                    "refund_block_number": refund_block_number
-                }
+            // Find the MatchedOrder document that contains this swap_id
+            let filter = doc! {
+                "$or": [
+                    { "source_swap.swap_id": swap_id },
+                    { "destination_swap.swap_id": swap_id }
+                ]
             };
             
-            let result = collection.update_one(filter, update).await?;
-            log::info!("Updated swap {} refund in MongoDB: {} documents modified", swap_id, result.modified_count);
+            // First, find the document to determine which swap to update
+            if let Some(matched_order) = collection.find_one(filter.clone()).await? {
+                let update = if matched_order.source_swap.swap_id == swap_id {
+                    doc! {
+                        "$set": {
+                            "source_swap.refund_tx_hash": refund_tx_hash,
+                            "source_swap.refund_block_number": refund_block_number
+                        }
+                    }
+                } else {
+                    doc! {
+                        "$set": {
+                            "destination_swap.refund_tx_hash": refund_tx_hash,
+                            "destination_swap.refund_block_number": refund_block_number
+                        }
+                    }
+                };
+                
+                let result = collection.update_one(filter, update).await?;
+                log::info!("Updated swap {} refund in MongoDB: {} documents modified", swap_id, result.modified_count);
+            } else {
+                log::warn!("No MatchedOrder found for swap_id: {}", swap_id);
+            }
         } else {
             log::info!("Updated swap {} refund: tx_hash={}, block={}", 
                 swap_id, refund_tx_hash, refund_block_number);
