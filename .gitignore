@@ -31,3 +31,6 @@ Thumbs.db
 # Logs
 logs
 *.log
+
+bitcoin/*/target
+bitcoin/*/Settings.toml
