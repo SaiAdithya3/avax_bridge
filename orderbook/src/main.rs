@@ -6,6 +6,7 @@ use axum::{
 };
 use std::{collections::HashMap, net::SocketAddr, str::FromStr};
 use mongodb::{Client, Database, IndexModel, bson::doc};
+use futures::TryStreamExt;
 use anyhow::Result;
 use tracing::{error, info};
 mod primitives;
@@ -74,23 +75,60 @@ async fn create_order(
 
 async fn get_order(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    Path(order_id): Path<String>,
 ) -> Result<Json<Response<MatchedOrder>>, (axum::http::StatusCode, Json<Response<()>>)> {
     let orders_collection = state.db.collection::<MatchedOrder>("orders");
     
-    let filter = doc! { "create_order.create_id": &id };
+    let filter = doc! { "create_order.create_id": &order_id };
     
     match orders_collection.find_one(filter, None).await {
         Ok(Some(matched_order)) => {
-            info!("Order found: {:?}", id);
+            info!("Order found: {:?}", order_id);
             Ok(Json(Response::success(matched_order)))
         }
         Ok(None) => {
-            info!("Order not found: {:?}", id);
+            info!("Order not found: {:?}", order_id);
             Err((
                 axum::http::StatusCode::NOT_FOUND,
                 Json(Response::<()>::error("Order not found".to_string()))
             ))
+        }
+        Err(e) => {
+            error!("Failed to query database: {}", e);
+            Err((
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(Response::<()>::error("Internal server error".to_string()))
+            ))
+        }
+    }
+}
+
+async fn get_orders_by_user(
+    State(state): State<AppState>,
+    Path(user_id): Path<String>,
+) -> Result<Json<Response<Vec<MatchedOrder>>>, (axum::http::StatusCode, Json<Response<()>>)> {
+    let orders_collection = state.db.collection::<MatchedOrder>("orders");
+    
+    // Create a filter that matches the user address in multiple fields
+    let filter = doc! {
+        "$or": [
+            { "source_swap.initiator": &user_id },
+            { "source_swap.redeemer": &user_id },
+            { "destination_swap.initiator": &user_id },
+            { "destination_swap.redeemer": &user_id },
+            { "create_order.bitcoin_optional_recipient": &user_id }
+        ]
+    };
+    
+    match orders_collection.find(filter, None).await {
+        Ok(mut cursor) => {
+            let mut orders = Vec::new();
+            while let Ok(Some(order)) = cursor.try_next().await {
+                orders.push(order);
+            }
+            
+            info!("Found {} orders for user: {:?}", orders.len(), user_id);
+            Ok(Json(Response::success(orders)))
         }
         Err(e) => {
             error!("Failed to query database: {}", e);
@@ -235,7 +273,8 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/health", get(health_check))
         .route("/orders", post(create_order))
-        .route("/orders/:id", get(get_order))
+        .route("/orders/id/:order_id", get(get_order))
+        .route("/orders/user/:user_id", get(get_orders_by_user))
         .with_state(state);
 
     // Run it
