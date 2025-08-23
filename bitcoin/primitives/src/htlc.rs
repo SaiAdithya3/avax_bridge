@@ -112,7 +112,7 @@ impl BitcoinHTLC {
                 (redeem, cb_bytes.clone())
             },
             Leaf::Refund => {
-                let refund = refund_leaf(self.timelock, &self.redeemer_pubkey)?;
+                let refund = refund_leaf(self.timelock, &self.initiator_pubkey)?;
                 
                 let ctrlblck = taproot_script_tree.control_block(&(refund.clone(), LeafVersion::TapScript)).unwrap();
                 
@@ -187,6 +187,10 @@ impl BitcoinHTLC {
         ]);
         
         Ok(witness_data)
+    }
+
+    pub fn timelock(&self) -> u64 {
+        self.timelock as u64
     }
 }
 

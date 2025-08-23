@@ -1,6 +1,6 @@
 pub mod htlc;
 pub mod types;
-mod scripts;
+pub mod scripts;
 pub mod indexer;
 pub mod htlc_handler;
 

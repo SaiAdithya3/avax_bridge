@@ -159,6 +159,37 @@ impl HtlcHandler {
         Ok(tx)
     }
 
+    pub async fn create_refund_tx(
+        &self,
+        htlc_addr: &Address,
+        private_key: &PrivateKey,
+        fee_rate: u64,
+        witness_stack: Vec<Vec<u8>>,
+    ) -> Result<Transaction> {
+        let utxo = self.get_htlc_utxo(htlc_addr).await?;
+        let sender_address = self.get_btc_address_for_priv_key(private_key)?;
+        let sender_address = self.parse_and_validate_address(&sender_address)?;
+        let fee = fee_rate * ESTIMATED_TAPROOT_TX_SIZE_VBYTES;
+        let output_value = utxo.value.saturating_sub(fee);
+
+        let mut tx = self.create_unsigned_redeem_tx(&utxo, &sender_address, output_value)?;
+
+        let prevouts = self.create_prevouts_for_signing(htlc_addr, utxo.value);
+
+
+        tx = self.sign_and_set_taproot_witness(
+            tx,
+            0,
+            TapLeafHash::from_script(Script::from_bytes(&witness_stack[2]), LeafVersion::TapScript),
+            private_key,
+            TapSighashType::All,
+            prevouts,
+            witness_stack,
+        )?;
+
+        Ok(tx)
+    }
+
     // Private helper methods
 
     /// Gets UTXOs for funding a transaction
