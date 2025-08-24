@@ -44,7 +44,7 @@ impl OrderToActionMapper {
             order.destination_swap.secret_hash.clone(),
             order.destination_swap.initiator.clone(),
             order.destination_swap.redeemer.clone(),
-            12, // Default timelock - you might want to get this from order data
+            order.destination_swap.timelock as i64, // Default timelock - you might want to get this from order data
             self.network,
         )?;
 
