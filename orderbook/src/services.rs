@@ -176,8 +176,8 @@ impl OrderService {
             self.generate_evm_swap_id(
                 Self::get_chain_id(&dest_chain),
                 &create_order.secret_hash,
-                &create_order.initiator_destination_address,
                 &dest_chain_config.executor_address,
+                &create_order.initiator_destination_address,
                 dest_chain_config.destination_timelock,
                 &create_order.destination_amount,
                 &dest_asset_config.atomic_swap_address,
