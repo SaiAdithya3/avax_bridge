@@ -5,7 +5,7 @@ import { API_URLS } from '../constants/constants';
 import QRCode from 'qrcode';
 import type { Order } from '../types/api';
 import { useAssetsStore } from '../store/assetsStore';
-import { isEVMChain, parseAction } from '../services/orderService';
+import { isEVMChain, type OrderStatus } from '../services/orderService';
 import { useBitcoinWallet } from '@gardenfi/wallet-connectors';
 import SwapProgress from './SwapProgress';
 
@@ -18,7 +18,7 @@ const POLL_INTERVAL = 5000; // 5 seconds
 
 const OrderDetails: React.FC<OrderDetailsProps> = ({ orderId, onBack }) => {
   const { address: evmAddress, walletClient } = useEVMWallet();
-  const [order, setOrder] = useState<Order | null>(null);
+  const [order, setOrder] = useState<Order & {status: OrderStatus} | null>(null);
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [isInitiating, setIsInitiating] = useState(false);
@@ -28,26 +28,6 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ orderId, onBack }) => {
   const [isCompleted, setIsCompleted] = useState(false);
   const { setShowHero } = useAssetsStore();
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Determine current step based on order status
-  const getCurrentStep = (): 'awaiting_deposit' | 'deposit_detected' | 'deposit_confirmed' | 'redeeming' | 'completed' => {
-    if (!order) return 'awaiting_deposit';
-    
-    const status = parseAction(order);
-    
-    switch (status) {
-      case 'completed':
-        return 'completed';
-      case 'redeeming':
-        return 'redeeming';
-      case 'deposit_confirmed':
-        return 'deposit_confirmed';
-      case 'deposit_detected':
-        return 'deposit_detected';
-      default:
-        return 'awaiting_deposit';
-    }
-  };
 
   const fetchOrder = async (showLoading = true) => {
     if (showLoading) setIsLoading(true);
@@ -240,7 +220,6 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ orderId, onBack }) => {
         {/* Swap Progress */}
         <SwapProgress
           order={order}
-          currentStep={getCurrentStep()}
           initiationHash={initiationHash}
           qrCodeUrl={qrCodeUrl}
           onInitiate={handleInit}

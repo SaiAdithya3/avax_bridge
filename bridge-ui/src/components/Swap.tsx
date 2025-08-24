@@ -5,11 +5,12 @@ import {AssetDropdown} from './AssetDropdown';
 import { createOrder } from '../services/orderService';
 import { useBitcoinWallet } from '@gardenfi/wallet-connectors';
 import { useEVMWallet } from '../hooks/useEVMWallet';
-import OrderDetails from './OrderDetails';
 
+interface SwapProps {
+  onOrderCreated: (orderId: string) => void;
+}
 
-
-const Swap: React.FC = () => {
+const Swap: React.FC<SwapProps> = ({ onOrderCreated }) => {
   const {
     fromAsset,
     toAsset,
@@ -27,7 +28,6 @@ const Swap: React.FC = () => {
     setShowHero,
   } = useAssetsStore();
 
-  const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
   const [isOrderCreating, setIsOrderCreating] = useState(false);
 
   const [isDropdownOpen, setIsDropdownOpen] = useState<'from' | 'to' | null>(null);
@@ -61,16 +61,6 @@ const Swap: React.FC = () => {
           </div>
         </div>
       </div>
-    );
-  }
-
-  // Show OrderDetails if order was created
-  if (createdOrderId) {
-    return (
-      <OrderDetails 
-        orderId={createdOrderId} 
-        onBack={() => setCreatedOrderId(null)} 
-      />
     );
   }
 
@@ -190,7 +180,8 @@ const Swap: React.FC = () => {
               });
               
               if (result.status === 'ok' && result.result) {
-                setCreatedOrderId(result.result);
+                // Call the callback to open the modal instead of showing OrderDetails directly
+                onOrderCreated(result.result);
               } else {
                 console.error('Failed to create order:', result);
               }

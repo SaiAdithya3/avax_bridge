@@ -1,55 +1,55 @@
 import { create } from 'zustand';
-import { type UserOrder, type OrderStatus } from '../services/orderService';
+import { subscribeWithSelector } from 'zustand/middleware';
+import type { Order } from '../types/api';
+import type { OrderStatus } from '../services/orderService';
 
 interface OrdersState {
-  orders: UserOrder[];
-  isLoading: boolean;
-  error: string | null;
-  statusFilter: OrderStatus | 'all';
-  
+  // User orders (from /orders/user/:user_id)
+  userOrders: (Order & {status: OrderStatus})[];
+  // Pending orders (orders ready for redemption)
+  pendingOrders: Order[];
+  // Loading states
+  isLoadingUserOrders: boolean;
+  isLoadingPendingOrders: boolean;
+  // Error states
+  userOrdersError: string | null;
+  pendingOrdersError: string | null;
   // Actions
-  setOrders: (orders: UserOrder[]) => void;
-  addOrder: (order: UserOrder) => void;
-  updateOrder: (orderId: string, updates: Partial<UserOrder>) => void;
-  setLoading: (loading: boolean) => void;
-  setError: (error: string | null) => void;
-  setStatusFilter: (filter: OrderStatus | 'all') => void;
+  setUserOrders: (orders: (Order & {status: OrderStatus})[]) => void;
+  setPendingOrders: (orders: Order[]) => void;
+  setLoadingUserOrders: (loading: boolean) => void;
+  setLoadingPendingOrders: (loading: boolean) => void;
+  setUserOrdersError: (error: string | null) => void;
+  setPendingOrdersError: (error: string | null) => void;
+  // Clear all data
   clearOrders: () => void;
 }
 
-export const useOrdersStore = create<OrdersState>((set, get) => ({
-  orders: [],
-  isLoading: false,
-  error: null,
-  statusFilter: 'all',
+export const useOrdersStore = create<OrdersState>()(
+  subscribeWithSelector((set) => ({
+    // Initial state
+    userOrders: [],
+    pendingOrders: [],
+    isLoadingUserOrders: false,
+    isLoadingPendingOrders: false,
+    userOrdersError: null,
+    pendingOrdersError: null,
 
-  setOrders: (orders) => set({ orders }),
-  
-  addOrder: (order) => {
-    const { orders } = get();
-    const existingIndex = orders.findIndex(o => o.id === order.id);
-    if (existingIndex >= 0) {
-      const updatedOrders = [...orders];
-      updatedOrders[existingIndex] = order;
-      set({ orders: updatedOrders });
-    } else {
-      set({ orders: [...orders, order] });
-    }
-  },
-
-  updateOrder: (orderId, updates) => {
-    const { orders } = get();
-    const updatedOrders = orders.map(order => 
-      order.id === orderId ? { ...order, ...updates } : order
-    );
-    set({ orders: updatedOrders });
-  },
-
-  setLoading: (loading) => set({ isLoading: loading }),
-  
-  setError: (error) => set({ error }),
-  
-  setStatusFilter: (filter) => set({ statusFilter: filter }),
-  
-  clearOrders: () => set({ orders: [] }),
-}));
+    // Actions
+    setUserOrders: (orders) => set({ userOrders: orders }),
+    setPendingOrders: (orders) => set({ pendingOrders: orders }),
+    setLoadingUserOrders: (loading) => set({ isLoadingUserOrders: loading }),
+    setLoadingPendingOrders: (loading) => set({ isLoadingPendingOrders: loading }),
+    setUserOrdersError: (error) => set({ userOrdersError: error }),
+    setPendingOrdersError: (error) => set({ pendingOrdersError: error }),
+    
+    clearOrders: () => set({
+      userOrders: [],
+      pendingOrders: [],
+      isLoadingUserOrders: false,
+      isLoadingPendingOrders: false,
+      userOrdersError: null,
+      pendingOrdersError: null,
+    }),
+  }))
+);

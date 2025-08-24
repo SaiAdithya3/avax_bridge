@@ -83,6 +83,15 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ orderId, isOpen, 
   useEffect(() => {
     if (orderId && isOpen) {
       let isMounted = true;
+      
+      // Reset state when opening with a new order
+      setOrder(null);
+      setQrCodeUrl('');
+      setInitiationHash(null);
+      setError(null);
+      setIsLoading(true);
+      setIsInitiating(false);
+      
       fetchOrder();
 
       // Polling for order status
@@ -94,20 +103,20 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ orderId, isOpen, 
             if (!isMounted) return;
             setOrder(data.result);
 
-                    if (data?.result?.source_swap?.initiate_tx_hash) {
-          setInitiationHash(data.result.source_swap.initiate_tx_hash);
-          setQrCodeUrl('');
-          // Stop polling if completed
-          if (pollingRef.current) {
-            clearInterval(pollingRef.current);
-            pollingRef.current = null;
-          }
-        } else {
-          if (data?.result?.source_swap?.deposit_address) {
-            const qrCode = await QRCode.toDataURL(data.result.source_swap.deposit_address);
-            setQrCodeUrl(qrCode);
-          }
-        }
+            if (data?.result?.source_swap?.initiate_tx_hash) {
+              setInitiationHash(data.result.source_swap.initiate_tx_hash);
+              setQrCodeUrl('');
+              // Stop polling if completed
+              if (pollingRef.current) {
+                clearInterval(pollingRef.current);
+                pollingRef.current = null;
+              }
+            } else {
+              if (data?.result?.source_swap?.deposit_address) {
+                const qrCode = await QRCode.toDataURL(data.result.source_swap.deposit_address);
+                setQrCodeUrl(qrCode);
+              }
+            }
           }
         } catch (err) {
           // Optionally handle polling errors
@@ -267,8 +276,10 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ orderId, isOpen, 
                   <div className="space-y-6">
                     {/* Swap Progress */}
                     <SwapProgress
-                      order={order}
-                      currentStep={getCurrentStep()}
+                        order={{
+                          ...order,
+                          status: parseAction(order)
+                        }}
                       initiationHash={initiationHash}
                       qrCodeUrl={qrCodeUrl}
                       onInitiate={handleInit}

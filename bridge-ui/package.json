@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@gardenfi/core": "^2.5.2",
     "@gardenfi/utils": "2.4.6-beta.1",
     "@gardenfi/wallet-connectors": "2.3.6-beta.5",
     "@tanstack/react-query": "^5.17.9",

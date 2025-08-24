@@ -4,159 +4,157 @@ import {
   Err,
   Fetcher,
   type AsyncResult,
+  trim0x,
 } from "@gardenfi/utils";
 import { erc20Abi, getContract, type WalletClient } from "viem";
 import { type APIResponse, with0x } from "@gardenfi/utils";
-
-import { API_URLS } from "../constants/constants";
 import { generateSecret, isEVMChain } from "./orderService";
-import { useEVMWallet } from "../hooks/useEVMWallet";
 import { switchOrAddNetwork } from "../utils/networkUtils";
 import { type EvmChain, type Order } from "../types/api";
 import { AtomicSwapABI } from "./atomicSwapABI";
 
-export const initiate = async (order: Order): AsyncResult<string, string> => {
-  const { address: evmAddress, walletClient } = useEVMWallet();
-  if (!evmAddress) return Err("No account found");
-  if (evmAddress.toLowerCase() !== order.source_swap.initiator.toLowerCase())
-    return Err("Account address and order initiator mismatch");
-  if (!isEVMChain(order.source_swap.chain))
-    return Err("Source chain is not an EVM chain");
+// export const initiate = async (order: Order): AsyncResult<string, string> => {
+//   const { address: evmAddress, walletClient } = useEVMWallet();
+//   if (!evmAddress) return Err("No account found");
+//   if (evmAddress.toLowerCase() !== order.source_swap.initiator.toLowerCase())
+//     return Err("Account address and order initiator mismatch");
+//   if (!isEVMChain(order.source_swap.chain))
+//     return Err("Source chain is not an EVM chain");
 
-  const _walletClient = await switchOrAddNetwork(
-    order.source_swap.chain as EvmChain,
-    walletClient as WalletClient
-  );
-  if (!_walletClient.ok) return Err(_walletClient.error);
-  const wallet = _walletClient.val.walletClient;
-  if (!wallet.account) return Err("No account found");
+//   const _walletClient = await switchOrAddNetwork(
+//     order.source_swap.chain as EvmChain,
+//     walletClient as WalletClient
+//   );
+//   if (!_walletClient.ok) return Err(_walletClient.error);
+//   const wallet = _walletClient.val.walletClient;
+//   if (!wallet.account) return Err("No account found");
 
-  const { create_order, source_swap } = order;
+//   const { create_order, source_swap } = order;
 
-  if (
-    !source_swap.amount ||
-    !source_swap.redeemer ||
-    !source_swap.timelock ||
-    !create_order.secret_hash
-  )
-    return Err("Invalid order");
+//   if (
+//     !source_swap.amount ||
+//     !source_swap.redeemer ||
+//     !source_swap.timelock ||
+//     !create_order.secret_hash
+//   )
+//     return Err("Invalid order");
 
-  const secretHash = with0x(create_order.secret_hash);
-  const timelock = BigInt(source_swap.timelock);
-  const redeemer = with0x(source_swap.redeemer);
-  const amount = BigInt(source_swap.amount);
+//   const secretHash = with0x(create_order.secret_hash);
+//   const timelock = BigInt(source_swap.timelock);
+//   const redeemer = with0x(source_swap.redeemer);
+//   const amount = BigInt(source_swap.amount);
 
-  const tokenAddress = await getTokenAddress(
-    order.source_swap.asset,
-    walletClient as WalletClient
-  );
-  if (!tokenAddress.ok) return Err(tokenAddress.error);
+//   const tokenAddress = await getTokenAddress(
+//     order.source_swap.asset,
+//     walletClient as WalletClient
+//   );
+//   if (!tokenAddress.ok) return Err(tokenAddress.error);
 
-  return _initiateOnErc20HTLC(
-    secretHash,
-    timelock,
-    amount,
-    redeemer,
-    order.source_swap.asset,
-    tokenAddress.val,
-    source_swap.swap_id,
-    wallet
-  );
-};
+//   return _initiateOnErc20HTLC(
+//     secretHash,
+//     timelock,
+//     amount,
+//     redeemer,
+//     order.source_swap.asset,
+//     tokenAddress.val,
+//     source_swap.swap_id,
+//     wallet
+//   );
+// };
 
-const getTokenAddress = async (
-  asset: string,
-  walletClient: WalletClient
-): AsyncResult<string, string> => {
-  try {
-    const atomicSwap = getContract({
-      address: with0x(asset),
-      abi: AtomicSwapABI,
-      client: walletClient,
-    });
+// const getTokenAddress = async (
+//   asset: string,
+//   walletClient: WalletClient
+// ): AsyncResult<string, string> => {
+//   try {
+//     const atomicSwap = getContract({
+//       address: with0x(asset),
+//       abi: AtomicSwapABI,
+//       client: walletClient,
+//     });
 
-    const token = await atomicSwap.read.token();
-    return Ok(token);
-  } catch (error) {
-    return Err("Failed to get token address", String(error));
-  }
-};
+//     const token = await atomicSwap.read.
+//     return Ok(token);
+//   } catch (error) {
+//     return Err("Failed to get token address", String(error));
+//   }
+// };
 
-const _initiateOnErc20HTLC = async (
-  secretHash: `0x${string}`,
-  timelock: bigint,
-  amount: bigint,
-  redeemer: `0x${string}`,
-  asset: string,
-  tokenAddress: string,
-  orderId: string,
-  walletClient: WalletClient
-): AsyncResult<string, string> => {
-  if (!walletClient.account) return Err("No account found");
+// const _initiateOnErc20HTLC = async (
+//   secretHash: `0x${string}`,
+//   timelock: bigint,
+//   amount: bigint,
+//   redeemer: `0x${string}`,
+//   asset: string,
+//   tokenAddress: string,
+//   orderId: string,
+//   walletClient: WalletClient
+// ): AsyncResult<string, string> => {
+//   if (!walletClient.account) return Err("No account found");
 
-  try {
-    const atomicSwap = getContract({
-      address: with0x(asset),
-      abi: AtomicSwapABI,
-      client: walletClient,
-    });
+//   try {
+//     const atomicSwap = getContract({
+//       address: with0x(asset),
+//       abi: AtomicSwapABI,
+//       client: walletClient,
+//     });
 
-    const approval = await checkAllowanceAndApprove(
-      Number(amount),
-      tokenAddress,
-      asset,
-      walletClient
-    );
-    if (!approval.ok) return Err(approval.error);
+//     const approval = await checkAllowanceAndApprove(
+//       Number(amount),
+//       tokenAddress,
+//       asset,
+//       walletClient
+//     );
+//     if (!approval.ok) return Err(approval.error);
 
-    const domain = await atomicSwap.read.eip712Domain();
+//     const domain = await atomicSwap.read.eip712Domain();
 
-    const signature = await walletClient.signTypedData({
-      account: walletClient.account,
-      domain: {
-        name: domain[1],
-        version: domain[2],
-        chainId: Number(domain[3]),
-        verifyingContract: domain[4],
-      },
-      types: {
-        Initiate: [
-          { name: "redeemer", type: "address" },
-          { name: "timelock", type: "uint256" },
-          { name: "amount", type: "uint256" },
-          { name: "secretHash", type: "bytes32" },
-        ],
-      },
-      primaryType: "Initiate",
-      message: {
-        redeemer,
-        timelock,
-        amount,
-        secretHash,
-      },
-    });
+//     const signature = await walletClient.signTypedData({
+//       account: walletClient.account,
+//       domain: {
+//         name: domain[1],
+//         version: domain[2],
+//         chainId: Number(domain[3]),
+//         verifyingContract: domain[4],
+//       },
+//       types: {
+//         Initiate: [
+//           { name: "redeemer", type: "address" },
+//           { name: "timelock", type: "uint256" },
+//           { name: "amount", type: "uint256" },
+//           { name: "secretHash", type: "bytes32" },
+//         ],
+//       },
+//       primaryType: "Initiate",
+//       message: {
+//         redeemer,
+//         timelock,
+//         amount,
+//         secretHash,
+//       },
+//     });
 
-    const res = await Fetcher.post<APIResponse<string>>(
-      API_URLS.ORDERBOOK + "/initiate",
-      {
-        body: JSON.stringify({
-          order_id: orderId,
-          signature,
-          perform_on: "Source",
-        }),
-      }
-    );
-    if (res.error) return Err(res.error);
-    return Ok(res.result ? res.result : "Initiate hash not found");
-  } catch (error) {
-    console.log("init error :", error);
-    return Err(String(error));
-  }
-};
+//     const res = await Fetcher.post<APIResponse<string>>(
+//       API_URLS.ORDERBOOK + "/initiate",
+//       {
+//         body: JSON.stringify({
+//           order_id: orderId,
+//           signature,
+//           perform_on: "Source",
+//         }),
+//       }
+//     );
+//     if (res.error) return Err(res.error);
+//     return Ok(res.result ? res.result : "Initiate hash not found");
+//   } catch (error) {
+//     console.log("init error :", error);
+//     return Err(String(error));
+//   }
+// };
 
 export const evmRedeem = async (walletClient: WalletClient, order: Order): AsyncResult<string, string> => {
   try {      
-  const { secret } = await generateSecret(order.create_order.nonce);
+  const { secret, secretHash } = await generateSecret(order.create_order.nonce);
   if (!walletClient) return Err("No wallet client found");
   if (!walletClient.account) return Err("No account found");
   
@@ -173,11 +171,21 @@ export const evmRedeem = async (walletClient: WalletClient, order: Order): Async
   if (wallet.chain.id !== getChainId(order.source_swap.chain)) {
     return Err(`Chain mismatch. Expected ${order.source_swap.chain}, got ${wallet.chain.name}`);
   }
+  console.log("secretHash", secretHash)
+  console.log("secret", secret)
+  console.log(
+    "address:", with0x(order.destination_swap.htlc_address),
+    "abi:", AtomicSwapABI ,
+    "functionName:", "redeem",
+    "args:", [order.source_swap.swap_id as `0x${string}`, trim0x(secret)],
+    "account:", wallet.account,
+    "chain:", wallet.chain
+  )
   const tx = await wallet.writeContract({
     address: with0x(order.destination_swap.htlc_address),
     abi: AtomicSwapABI ,
     functionName: "redeem",
-    args: [order.source_swap.swap_id as `0x${string}`, secret],
+    args: [order.destination_swap.swap_id as `0x${string}`, trim0x(secret) as `0x${string}`],
     account: wallet.account,
     chain: wallet.chain
   })
@@ -185,7 +193,7 @@ export const evmRedeem = async (walletClient: WalletClient, order: Order): Async
   return Ok(tx);
 } catch (error) {
     return Err(String(error));
-}
+  }
 };
 
 export const initiateViaUDA = async (walletClient: WalletClient, order: Order): AsyncResult<`0x${string}`, string> => {
@@ -205,7 +213,6 @@ export const initiateViaUDA = async (walletClient: WalletClient, order: Order): 
   if (wallet.chain.id !== getChainId(order.source_swap.chain)) {
     return Err(`Chain mismatch. Expected ${order.source_swap.chain}, got ${wallet.chain.name}`);
   }
-
   const tx = await wallet.writeContract({
     address: with0x(order.source_swap.token_address),
     abi: erc20Abi ,

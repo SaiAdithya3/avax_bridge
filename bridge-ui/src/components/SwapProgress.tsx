@@ -1,12 +1,12 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle, Clock, AlertCircle, ArrowRight, Loader2, ExternalLink } from 'lucide-react';
+import { CheckCircle, Clock, AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
 import type { Order } from '../types/api';
 import { useAssetsStore } from '../store/assetsStore';
+import type { OrderStatus } from '../services/orderService';
 
 interface SwapProgressProps {
-    order: Order;
-    currentStep: 'awaiting_deposit' | 'deposit_detected' | 'deposit_confirmed' | 'redeeming' | 'completed';
+    order: Order & {status: OrderStatus};
     initiationHash?: string | null;
     qrCodeUrl?: string;
     onInitiate?: () => void;
@@ -15,9 +15,52 @@ interface SwapProgressProps {
     isLoading?: boolean;
 }
 
+const stepMeta: Record<OrderStatus, {
+    title: string;
+    description: string;
+    icon: React.ElementType;
+}> = {
+    created: {
+        title: 'Awaiting Deposit',
+        description: 'Send funds to the deposit address',
+        icon: Clock,
+    },
+    deposit_detected: {
+        title: 'Deposit Detected',
+        description: 'Deposit transaction detected, waiting for confirmation',
+        icon: Clock,
+    },
+    deposit_confirmed: {
+        title: 'Deposit Confirmed',
+        description: 'Deposit confirmed, waiting for redemption',
+        icon: Clock,
+    },
+    counterPartyInitiated: {
+        title: 'Counter Party Initiated',
+        description: 'Counter party has initiated the swap',
+        icon: Clock,
+    },
+    redeeming: {
+        title: 'Redeeming',
+        description: 'Swap is being redeemed',
+        icon: Clock,
+    },  
+   
+    counterPartyRedeemed: {
+        title: 'Counter Party Redeemed',
+        description: 'Counter party has redeemed the swap',
+        icon: CheckCircle,
+    },
+   
+    completed: {
+        title: 'Swap Completed',
+        description: 'Your swap has been completed successfully',
+        icon: CheckCircle,
+    },
+};
+
 const SwapProgress: React.FC<SwapProgressProps> = ({
     order,
-    currentStep,
     initiationHash,
     qrCodeUrl,
     onInitiate,
@@ -26,6 +69,12 @@ const SwapProgress: React.FC<SwapProgressProps> = ({
     isLoading = false
 }) => {
     const { assets } = useAssetsStore();
+    // If you want to always get the latest order from a store, you could do:
+    // const { getOrderById } = useOrdersStore();
+    // const latestOrder = getOrderById(order.id) || order;
+
+    // Use the status from the order to determine the current step
+    const currentStep: OrderStatus = order.status;
 
     const getAssetSymbol = (assetString: string): string => {
         const parts = assetString.split(':');
@@ -72,7 +121,7 @@ const SwapProgress: React.FC<SwapProgressProps> = ({
     }
 
     // Check if swap has been initiated
-    const hasInitiated = order.source_swap.initiate_tx_hash || initiationHash;
+    const hasInitiated = order.source_swap.initiate_tx_hash || order.destination_swap.initiate_tx_hash;
 
     // If not initiated, show minimal setup steps
     if (!hasInitiated) {
@@ -199,47 +248,19 @@ const SwapProgress: React.FC<SwapProgressProps> = ({
     }
 
     // If initiated, show progress steps
-    const steps = [
-        {
-            id: 'awaiting_deposit',
-            title: 'Awaiting Deposit',
-            description: 'Send funds to the deposit address',
-            icon: Clock,
-            status: currentStep === 'awaiting_deposit' ? 'current' : 
-                   ['deposit_detected', 'deposit_confirmed', 'redeeming', 'completed'].includes(currentStep) ? 'completed' : 'pending'
-        },
-        {
-            id: 'deposit_detected',
-            title: 'Deposit Detected',
-            description: 'Deposit transaction detected, waiting for confirmation',
-            icon: Clock,
-            status: currentStep === 'deposit_detected' ? 'current' : 
-                   ['deposit_confirmed', 'redeeming', 'completed'].includes(currentStep) ? 'completed' : 'pending'
-        },
-        {
-            id: 'deposit_confirmed',
-            title: 'Deposit Confirmed',
-            description: 'Deposit confirmed, waiting for redemption',
-            icon: Clock,
-            status: currentStep === 'deposit_confirmed' ? 'current' : 
-                   ['redeeming', 'completed'].includes(currentStep) ? 'completed' : 'pending'
-        },
-        {
-            id: 'redeeming',
-            title: 'Redeeming',
-            description: 'Swap is being redeemed',
-            icon: Clock,
-            status: currentStep === 'redeeming' ? 'current' : 
-                   currentStep === 'completed' ? 'completed' : 'pending'
-        },
-        {
-            id: 'completed',
-            title: 'Swap Completed',
-            description: 'Your swap has been completed successfully',
-            icon: CheckCircle,
-            status: currentStep === 'completed' ? 'completed' : 'pending'
-        }
-    ];
+    const steps = Object.keys(stepMeta).map((stepId) => {
+        const idx = Object.keys(stepMeta).indexOf(stepId);
+        const currentIdx = Object.keys(stepMeta).indexOf(currentStep);
+        let status: 'pending' | 'current' | 'completed' =
+            idx < currentIdx ? 'completed'
+            : idx === currentIdx ? 'current'
+            : 'pending';
+        return {
+            id: stepId,
+            ...stepMeta[stepId as keyof typeof stepMeta],
+            status,
+        };
+    });
 
     return (
         <motion.div

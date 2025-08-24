@@ -1,12 +1,13 @@
 import { API_URLS } from '../constants/constants';
 import type { CreateOrderRequest, CreateOrderResponse, Order } from '../types/api';
 import { Err, Ok, trim0x, with0x } from '@gardenfi/utils';
-import { sha256 } from 'viem';
+import { sha256, type WalletClient } from 'viem';
 import { ECPairFactory } from 'ecpair';
 import * as ecc from 'tiny-secp256k1';
 import { DigestKey } from '../utils/digestKey';
 import type { AssetOption } from '../store/assetsStore';
 import axios from 'axios';
+import { evmRedeem } from './contractService';
 
 /**
  * You must pass in all required data to these service functions.
@@ -58,6 +59,127 @@ export const isBitcoinChain = (chain: string): boolean => {
 };
 
 /**
+ * Fetch user orders from the orderbook
+ * This is the single source of truth for fetching orders
+ */
+export const fetchUserOrders = async (userAddress: string): Promise<Order[]> => {
+    try {
+        const response = await axios.get(`${API_URLS.ORDERBOOK}/orders/user/${userAddress}`);
+        
+        if (response.status !== 200) {
+            throw new Error('Failed to fetch user orders from orderbook');
+        }
+        
+        return response.data.result || [];
+    } catch (error) {
+        console.error('Error fetching user orders:', error);
+        throw error;
+    }
+};
+
+/**
+ * Filter orders that are ready for redemption
+ * Orders are ready when both source_swap and destination_swap are initiated but destination_swap is not redeemed
+ */
+export const filterPendingOrders = (orders: Order[]): Order[] => {
+    return orders.filter(order => {
+        const { source_swap, destination_swap } = order;
+        
+        // Check if both swaps are initiated
+        const sourceInitiated = source_swap.initiate_tx_hash && source_swap.initiate_tx_hash !== '';
+        const destinationInitiated = destination_swap.initiate_tx_hash && destination_swap.initiate_tx_hash !== '';
+        
+        // Check if destination swap is not redeemed
+        const destinationNotRedeemed = !destination_swap.redeem_tx_hash || destination_swap.redeem_tx_hash === '';
+        
+        return sourceInitiated && destinationInitiated && destinationNotRedeemed;
+    });
+};
+
+/**
+ * Execute redemption for a single order
+ * Determines whether to call evmRedeem or bitcoinRedeem based on the destination chain
+ */
+export const executeOrderRedemption = async (order: Order, walletClient: WalletClient): Promise<{ success: boolean; message: string; txHash?: string }> => {
+    try {
+        const { destination_swap } = order;
+
+        // Check if destination swap is EVM-based
+        if (isEVMChain(destination_swap.chain)) {
+            const redeemResult = await evmRedeem(walletClient, order);
+            
+            if (redeemResult.ok) {
+                return {
+                    success: true,
+                    message: 'EVM redeem successful',
+                    txHash: redeemResult.val
+                };
+            } else {
+                return {
+                    success: false,
+                    message: `EVM redeem failed: ${redeemResult.error}`
+                };
+            }
+        } else if (isBitcoinChain(destination_swap.chain)) {
+            // TODO: Implement bitcoinRedeem function
+            return {
+                success: false,
+                message: 'Bitcoin redeem not yet implemented'
+            };
+        } else {
+            return {
+                success: false,
+                message: `Unsupported destination chain: ${destination_swap.chain}`
+            };
+        }
+    } catch (error) {
+        return {
+            success: false,
+            message: `Error processing order: ${String(error)}`
+        };
+    }
+};
+
+/**
+ * Execute redemption for multiple pending orders
+ */
+export const executePendingOrdersRedemption = async (orders: Order[], walletClient: WalletClient): Promise<{ success: boolean; message: string; processedCount: number; results: Array<{ orderId: string; success: boolean; message: string; txHash?: string }> }> => {
+    const results: Array<{ orderId: string; success: boolean; message: string; txHash?: string }> = [];
+    let processedCount = 0;
+
+    for (const order of orders) {
+        try {
+            const result = await executeOrderRedemption(order, walletClient);
+            results.push({
+                orderId: order.create_order.create_id,
+                ...result
+            });
+            
+            if (result.success) {
+                processedCount++;
+            }
+        } catch (error) {
+            results.push({
+                orderId: order.create_order.create_id,
+                success: false,
+                message: String(error)
+            });
+        }
+    }
+
+    const message = processedCount > 0 
+        ? `Successfully processed ${processedCount} orders`
+        : 'No orders processed successfully';
+
+    return {
+        success: processedCount > 0,
+        message,
+        processedCount,
+        results
+    };
+};
+
+/**
  * Build the order request.
  * All required data must be passed in from the component.
  */
@@ -101,7 +223,7 @@ export const buildCreateOrderRequest = async ({
     const nonce = Date.now().toString();
     const { secretHash } = await generateSecret(nonce);
 
-    if (!initiator_source_address || !initiator_destination_address) {
+    if (!initiator_source_address || !initiator_destination_address || !secretHash) {
         throw new Error('Invalid initiator addresses');
     }
 
@@ -177,7 +299,9 @@ export type OrderStatus =
   | 'deposit_detected'
   | 'deposit_confirmed'
   | 'redeeming'
-  | 'completed';
+  | 'completed'
+  | 'counterPartyInitiated'
+  | 'counterPartyRedeemed'
 
 // Centralized function to parse order action/state
 export const parseAction = (order: any): OrderStatus => {
@@ -185,87 +309,30 @@ export const parseAction = (order: any): OrderStatus => {
   if (order.destination_swap?.redeem_tx_hash) {
     return 'completed';
   }
+
+  if (order.source_swap?.initiate_tx_hash && !order.source_swap?.initiate_block_number) {
+    return 'deposit_detected';
+  }
+
+  if (order.source_swap?.initiate_block_number && !order.destination_swap?.initiate_tx_hash) {
+    return 'deposit_confirmed';
+  }
+  
+  // Check if source is initiated but destination not initiated (counter party needs to initiate)
+  if (order.source_swap?.initiate_tx_hash && !order.destination_swap?.initiate_tx_hash) {
+    return 'counterPartyInitiated';
+  }
   
   // Check if redeeming is in progress
   if (order.source_swap?.initiate_tx_hash && order.destination_swap?.initiate_tx_hash) {
     return 'redeeming';
   }
   
-  // Check if deposit is confirmed (has block number)
-  if (order.source_swap?.initiate_block_number) {
-    return 'deposit_confirmed';
+  if (order.source_swap?.initiate_tx_hash && order.destination_swap?.initiate_tx_hash && !order.destination_swap?.redeem_tx_hash) {
+    return 'counterPartyRedeemed';
   }
-  
-  // Check if deposit is detected (has tx hash but no block number)
-  if (order.source_swap?.initiate_tx_hash) {
-    return 'deposit_detected';
-  }
-  
   // Default: awaiting deposit
   return 'created';
-};
-
-
-// Fetch user orders with polling
-export const fetchUserOrders = async (
-  userAddress: string,
-  pollInterval: number = 5000,
-  maxPolls: number = 12
-): Promise<(Order & {status: OrderStatus})[]> => {
-  const orders: (Order & {status: OrderStatus})[] = [];
-  let pollCount = 0;
-
-  const poll = async (): Promise<(Order & {status: OrderStatus})[]> => {
-    try {
-      const response = await axios.get(`${API_URLS.ORDERBOOK}/orders/user/${userAddress}`);
-      
-      if (response.status === 200 && response.data) {
-        const apiOrders = Array.isArray(response.data) ? response.data : [response.data];
-        
-        return apiOrders.map((order: any) => {
-          const status = parseAction(order);
-          return {
-            ...order, 
-            status
-          };
-        });
-      }
-      
-      return [];
-    } catch (error) {
-      console.error('Error fetching user orders:', error);
-      return [];
-    }
-  };
-
-  // Initial fetch
-  const initialOrders = await poll();
-  orders.push(...initialOrders);
-
-  // Polling logic
-  const pollOrders = async (): Promise<void> => {
-    if (pollCount >= maxPolls) return;
-
-    await new Promise(resolve => setTimeout(resolve, pollInterval));
-    pollCount++;
-
-    const newOrders = await poll();
-    
-    // Update existing orders and add new ones
-    newOrders.forEach(newOrder => {
-      const existingIndex = orders.findIndex(order => order.create_order.create_id === newOrder.create_order.create_id);
-      if (existingIndex >= 0) {
-        orders[existingIndex] = newOrder;
-      } else {
-        orders.push(newOrder);
-      }
-    });
-  };
-
-  // Start polling
-  const pollPromise = pollOrders();
-  
-  return orders;
 };
 
 // Get filtered orders by status
@@ -308,8 +375,32 @@ export const getOrderStatusInfo = (status: OrderStatus) => {
       color: 'bg-emerald-100 text-emerald-800',
       icon: '🎉',
       description: 'Swap has been completed successfully'
+    },
+    counterPartyInitiated: {
+      label: 'Counter Party Initiated',
+      color: 'bg-orange-100 text-orange-800',
+      icon: '🤝',
+      description: 'Counter party has initiated their side of the swap'
+    },
+    counterPartyRedeemed: {
+      label: 'Ready for Redemption',
+      color: 'bg-green-100 text-green-800',
+      icon: '💰',
+      description: 'Ready to redeem the swap'
+    },
+    pending: {
+      label: 'Pending',
+      color: 'bg-gray-100 text-gray-800',
+      icon: '⏳',
+      description: 'Order is in pending state'
     }
   };
 
-  return statusConfig[status];
+  // Return the status config or a default if status is not found
+  return statusConfig[status] || {
+    label: 'Unknown Status',
+    color: 'bg-gray-100 text-gray-800',
+    icon: '❓',
+    description: 'Unknown order status'
+  };
 };

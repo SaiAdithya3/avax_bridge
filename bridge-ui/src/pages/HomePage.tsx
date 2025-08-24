@@ -1,10 +1,15 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import Swap from '../components/Swap';
+import { PendingOrdersManager } from '../components/PendingOrdersManager';
 import { useAssetsStore } from '../store/assetsStore';
 
-const HomePage: React.FC = () => {
-  const { showHero } = useAssetsStore();
+interface HomePageProps {
+  showHero: boolean;
+  onOrderCreated: (orderId: string) => void;
+}
+
+const HomePage: React.FC<HomePageProps> = ({ showHero, onOrderCreated }) => {
   return (
     <div className="w-full mx-auto px-4 py-8">
       {/* Header */}
@@ -21,9 +26,19 @@ const HomePage: React.FC = () => {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="flex justify-center"
+        className="flex justify-center mb-8"
       >
-        <Swap />
+        <Swap onOrderCreated={onOrderCreated} />
+      </motion.div>
+
+      {/* Pending Orders Manager */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.2 }}
+        className="max-w-2xl mx-auto"
+      >
+        <PendingOrdersManager />
       </motion.div>
     </div>
   );

@@ -119,6 +119,12 @@ function App() {
     setSelectedOrderId(null);
   };
 
+  // New function to handle order creation and open modal
+  const handleOrderCreated = (orderId: string) => {
+    setSelectedOrderId(orderId);
+    setIsOrderDetailsModalOpen(true);
+  };
+
   return (
     <div className="relative w-full min-h-screen flex flex-col bg-gradient-to-br from-[#f9fafb] via-[#f3f4f6] to-[#e5e7eb] overflow-hidden">
       {/* Revolving Blobs in the whole background */}
@@ -134,7 +140,7 @@ function App() {
 
       {/* Main content */}
       <main className="flex-1 z-10 w-full">
-        <HomePage showHero={!isOrderDetailsModalOpen} />
+        <HomePage showHero={!isOrderDetailsModalOpen} onOrderCreated={handleOrderCreated} />
       </main>
 
       {/* Orders Sidebar */}

@@ -68,15 +68,14 @@ function getChainLogo(chainName: string) {
 const UserOrders: React.FC = () => {
   const { address: evmAddress } = useEVMWallet();
   const { 
-    orders, 
-    isLoading, 
-    error, 
-    statusFilter,
-    setOrders, 
-    setLoading, 
-    setError, 
-    setStatusFilter 
+    userOrders,
+    isLoadingUserOrders,
+    userOrdersError,
+    setUserOrders,
+    setLoadingUserOrders,
+    setUserOrdersError,
   } = useOrdersStore();
+  const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all');
   const [filteredOrders, setFilteredOrders] = useState<(Order & {status: OrderStatus})[]>([]);
   const [isPolling, setIsPolling] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -84,20 +83,20 @@ const UserOrders: React.FC = () => {
 
   // Status filter options
   const statusOptions: Array<{ value: OrderStatus | 'all'; label: string; count: number }> = [
-    { value: 'all', label: 'All Orders', count: orders.length },
-    { value: 'created', label: 'Awaiting Deposit', count: orders.filter(o => o.status === 'created').length },
-    { value: 'deposit_detected', label: 'Deposit Detected 0/1', count: orders.filter(o => o.status === 'deposit_detected').length },
-    { value: 'deposit_confirmed', label: 'Deposit Confirmed', count: orders.filter(o => o.status === 'deposit_confirmed').length },
-    { value: 'redeeming', label: 'Redeeming', count: orders.filter(o => o.status === 'redeeming').length },
-    { value: 'completed', label: 'Swap Completed', count: orders.filter(o => o.status === 'completed').length },
+    { value: 'all', label: 'All Orders', count: userOrders.length },
+    { value: 'created', label: 'Awaiting Deposit', count: userOrders.filter(o => o.status === 'created').length },
+    { value: 'deposit_detected', label: 'Deposit Detected 0/1', count: userOrders.filter(o => o.status === 'deposit_detected').length },
+    { value: 'deposit_confirmed', label: 'Deposit Confirmed', count: userOrders.filter(o => o.status === 'deposit_confirmed').length },
+    { value: 'redeeming', label: 'Redeeming', count: userOrders.filter(o => o.status === 'redeeming').length },
+    { value: 'completed', label: 'Swap Completed', count: userOrders.filter(o => o.status === 'completed').length },
   ];
 
   // Fetch orders with polling
   const fetchOrders = async () => {
     if (!evmAddress) return;
 
-    setLoading(true);
-    setError(null);
+    setLoadingUserOrders(true);
+    setUserOrdersError(null);
 
     try {
       const response = await fetch(`${API_URLS.ORDERBOOK}/orders/user/${evmAddress}`);
@@ -113,16 +112,16 @@ const UserOrders: React.FC = () => {
           };
         });
         
-        setOrders(userOrders);
+        setUserOrders(userOrders);
         setFilteredOrders(getFilteredOrders(userOrders, statusFilter));
       } else {
-        setError('Failed to fetch orders');
+        setUserOrdersError('Failed to fetch orders');
       }
     } catch (err) {
-      setError('Failed to fetch orders');
+      setUserOrdersError('Failed to fetch orders');
       console.error('Error fetching orders:', err);
     } finally {
-      setLoading(false);
+      setLoadingUserOrders(false);
     }
   };
 
@@ -146,7 +145,7 @@ const UserOrders: React.FC = () => {
             };
           });
           
-          setOrders(userOrders);
+          setUserOrders(userOrders);
           setFilteredOrders(getFilteredOrders(userOrders, statusFilter));
         }
       } catch (err) {
@@ -171,8 +170,11 @@ const UserOrders: React.FC = () => {
   }, [evmAddress]);
 
   useEffect(() => {
-    setFilteredOrders(getFilteredOrders(orders, statusFilter));
-  }, [orders, statusFilter]);
+    setFilteredOrders(getFilteredOrders(userOrders.map((order) => ({
+      ...order,
+      status: parseAction(order)
+    })), statusFilter));
+  }, [userOrders, statusFilter]);
 
   // Helper function to extract asset symbol from asset string
   const getAssetSymbol = (assetString: string): string => {
@@ -263,7 +265,7 @@ const UserOrders: React.FC = () => {
       </div>
 
       {/* Loading State */}
-      {isLoading && (
+      {isLoadingUserOrders && (
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
           <div className="flex items-center justify-center">
             <div className="w-8 h-8 border-2 border-[#e84142] border-t-transparent rounded-full animate-spin mr-3"></div>
@@ -273,20 +275,20 @@ const UserOrders: React.FC = () => {
       )}
 
       {/* Error State */}
-      {error && (
+      {userOrdersError && (
         <div className="bg-red-50 border border-red-200 rounded-2xl p-6 mb-6">
           <div className="flex items-center">
             <svg className="w-5 h-5 text-red-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span className="text-red-700">{error}</span>
+            <span className="text-red-700">{userOrdersError}</span>
           </div>
         </div>
       )}
 
       {/* Orders List */}
       <AnimatePresence>
-        {filteredOrders.length === 0 && !isLoading ? (
+        {filteredOrders.length === 0 && !isLoadingUserOrders ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}

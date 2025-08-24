@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Clock, AlertCircle, ArrowRight } from 'lucide-react';
+import { X, Clock, AlertCircle, ArrowRight, RefreshCw } from 'lucide-react';
 import { useEVMWallet } from '../hooks/useEVMWallet';
-import { getOrderStatusInfo, parseAction, type OrderStatus } from '../services/orderService';
+import { useBTCWallet } from '../hooks/useBTCWallet';
+import { getOrderStatusInfo, parseAction, type OrderStatus, fetchUserOrders, filterPendingOrders } from '../services/orderService';
 import { useOrdersStore } from '../store/ordersStore';
-import { API_URLS } from '../constants/constants';
 import { useAssetsStore } from '../store/assetsStore';
 
 interface OrdersSidebarProps {
@@ -47,133 +47,114 @@ function getAssetLogo(symbol: string) {
 
 const OrdersSidebar: React.FC<OrdersSidebarProps> = ({ isOpen, onClose, onOrderClick }) => {
   const { address: evmAddress } = useEVMWallet();
+  const { address: btcAddress } = useBTCWallet();
+  
   const { 
-    orders, 
-    isLoading, 
-    error, 
-    setOrders, 
-    setLoading, 
-    setError
+    userOrders, 
+    pendingOrders,
+    isLoadingUserOrders, 
+    userOrdersError, 
+    setUserOrders, 
+    setPendingOrders,
+    setLoadingUserOrders, 
+    setUserOrdersError
   } = useOrdersStore();
 
   const [isPolling, setIsPolling] = useState(false);
   const { assets } = useAssetsStore();
 
-
-
-  // Fetch orders with polling
+  // Fetch orders
   const fetchOrders = async () => {
-    if (!evmAddress) return;
+    if (!evmAddress && !btcAddress) return;
 
-    setLoading(true);
-    setError(null);
+    setLoadingUserOrders(true);
+    setUserOrdersError(null);
 
     try {
-      const response = await fetch(`${API_URLS.ORDERBOOK}/orders/user/${evmAddress}`);
-      if (response.ok) {
-        const data = await response.json();
-        const apiOrders = data.result
-        
-        const userOrders = apiOrders.map((order: any) => {
-          const status = parseAction(order);
-          return {
-            ... order,
-            status,
-          };
-        });
-        
-        // Sort orders by creation date (latest first)
-        const sortedOrders = userOrders.sort((a: any, b: any) => 
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        );
-        
-        setOrders(sortedOrders);
-      } else {
-        setError('Failed to fetch orders');
-      }
+      const userAddress = evmAddress || btcAddress!;
+      const orders = await fetchUserOrders(userAddress);
+      
+      // Add status to each order
+      const ordersWithStatus = orders.map((order: any) => {
+        const status = parseAction(order);
+        return {
+          ...order,
+          status,
+        };
+      });
+      
+      // Sort orders by creation date (latest first)
+      const sortedOrders = ordersWithStatus.sort((a: any, b: any) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      
+      setUserOrders(sortedOrders);
+      
+      // Filter and set pending orders
+      const pending = filterPendingOrders(orders);
+      setPendingOrders(pending);
+      
     } catch (err) {
-      setError('Failed to fetch orders');
+      setUserOrdersError('Failed to fetch orders');
       console.error('Error fetching orders:', err);
     } finally {
-      setLoading(false);
+      setLoadingUserOrders(false);
     }
   };
 
   // Start polling
   const startPolling = () => {
-    if (!evmAddress || isPolling) return;
-
     setIsPolling(true);
-    const pollInterval = setInterval(async () => {
-      try {
-        const response = await fetch(`${API_URLS.ORDERBOOK}/orders/user/${evmAddress}`);
-        if (response.ok) {
-          const data = await response.json();
-          const apiOrders = data.result;
-          
-          const userOrders = apiOrders.map((order: any) => {
-            const status = parseAction(order);
-            return {
-             ...order,
-             status,
-            };
-          });
-          
-          // Sort orders by creation date (latest first)
-          const sortedOrders = userOrders.sort((a: any, b: any) => 
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-          );
-          
-          setOrders(sortedOrders);
-        }
-      } catch (err) {
-        console.error('Polling error:', err);
-      }
-    }, 10000); // Poll every 10 seconds
-
-    // Cleanup after 2 minutes
-    setTimeout(() => {
-      clearInterval(pollInterval);
-      setIsPolling(false);
-    }, 120000);
-
-    return () => clearInterval(pollInterval);
+    fetchOrders();
+    
+    const interval = setInterval(fetchOrders, 10000); // Poll every 10 seconds
+    
+    // Store interval ID for cleanup
+    (window as any).ordersPollingInterval = interval;
   };
 
+  // Stop polling
+  const stopPolling = () => {
+    setIsPolling(false);
+    if ((window as any).ordersPollingInterval) {
+      clearInterval((window as any).ordersPollingInterval);
+      (window as any).ordersPollingInterval = null;
+    }
+  };
+
+  // Initial fetch and polling setup
   useEffect(() => {
-    if (evmAddress && isOpen) {
+    if (isOpen) {
       fetchOrders();
       startPolling();
+    } else {
+      stopPolling();
     }
-  }, [evmAddress, isOpen]);
 
+    return () => {
+      stopPolling();
+    };
+  }, [isOpen, evmAddress, btcAddress]);
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopPolling();
+    };
+  }, []);
 
-  // Helper function to extract asset symbol from asset string
-  const getAssetSymbol = (assetString: string): string => {
-    const parts = assetString.split(':');
-    return parts[parts.length - 1]?.toUpperCase() || assetString.toUpperCase();
+  const getAssetSymbol = (assetValue: string) => {
+    const parts = assetValue.split(':');
+    if (parts.length > 1) {
+      return parts[1].toUpperCase();
+    }
+    return assetValue.toUpperCase();
   };
 
-  // Helper function to format amount
-  const formatAmount = (amount: string, decimals: number) => {
-    const numAmount = parseFloat(amount);
-    if (isNaN(numAmount)) return '0';
-    const formattedAmount = numAmount / Math.pow(10, decimals);
-    let str = formattedAmount.toFixed(decimals);
-    str = str.replace(/\.?0+$/, '');
-    return str;
+  const formatAmount = (amount: string, decimals: number = 6) => {
+    const num = parseFloat(amount) / Math.pow(10, decimals);
+    return num.toFixed(4);
   };
-
-  // Helper function to format date
-  const formatDate = (dateString: string): string => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
-  };
-
-  if (!evmAddress) {
-    return null;
-  }
 
   return (
     <AnimatePresence>
@@ -184,129 +165,150 @@ const OrdersSidebar: React.FC<OrdersSidebarProps> = ({ isOpen, onClose, onOrderC
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40"
+            className="fixed inset-0 bg-black bg-opacity-50 z-40"
             onClick={onClose}
           />
-          
+
           {/* Sidebar */}
           <motion.div
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
-            transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="fixed right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl z-50 flex flex-col"
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            className="fixed right-0 top-0 h-full w-96 bg-white shadow-xl z-50 overflow-hidden"
           >
             {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900">Transactions</h2>
+            <div className="flex items-center justify-between p-4 border-b">
+              <h2 className="text-lg font-semibold">Orders</h2>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={fetchOrders}
+                  disabled={isLoadingUserOrders}
+                  className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                  title="Refresh orders"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isLoadingUserOrders ? 'animate-spin' : ''}`} />
+                </button>
+                <button
+                  onClick={onClose}
+                  className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-              <button
-                onClick={onClose}
-                className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-              >
-                <X className="w-5 h-5 text-gray-500" />
-              </button>
             </div>
 
-
-
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-4">
-              {/* Loading State */}
-              {isLoading && (
-                <div className="flex items-center justify-center py-8">
-                  <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mr-3"></div>
-                  <span className="text-gray-600">Loading orders...</span>
-                </div>
-              )}
-
-              {/* Error State */}
-              {error && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-                  <div className="flex items-center">
-                    <AlertCircle className="w-4 h-4 text-red-400 mr-2" />
-                    <span className="text-sm text-red-700">{error}</span>
+            <div className="flex-1 overflow-y-auto">
+              {/* Pending Orders Section */}
+              {pendingOrders.length > 0 && (
+                <div className="p-4 border-b bg-yellow-50">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-medium text-yellow-800">Pending Redemption</h3>
+                    <span className="text-sm bg-yellow-200 text-yellow-800 px-2 py-1 rounded-full">
+                      {pendingOrders.length}
+                    </span>
                   </div>
-                </div>
-              )}
-
-              {/* Orders List */}
-              {orders.length === 0 && !isLoading ? (
-                <div className="text-center py-8">
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Clock className="w-8 h-8 text-gray-400" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">No Orders Found</h3>
-                  <p className="text-gray-500">You don't have any orders with the selected status</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {orders.map((order, index) => {
-                    const statusInfo = getOrderStatusInfo(order.status);
-                    const sourceSymbol = getAssetSymbol(order.source_swap.asset);
-                    const destinationSymbol = getAssetSymbol(order.destination_swap.asset);
-                    // const sourceChainName = getChainName(order.source_swap.chain);
-                    // const destinationChainName = getChainName(order.destination_swap.chain);
-
-                    return (
-                      <motion.div
+                  <div className="space-y-2">
+                    {pendingOrders.slice(0, 3).map((order) => (
+                      <div
                         key={order.create_order.create_id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.05 }}
-                        className="bg-gray-50 rounded-lg p-4 cursor-pointer hover:bg-gray-100 transition-colors border border-gray-100"
+                        className="p-3 bg-white rounded-lg border border-yellow-200 cursor-pointer hover:bg-yellow-100 transition-colors"
                         onClick={() => onOrderClick(order.create_order.create_id)}
                       >
-                        {/* Order Header */}
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusInfo.color}`}>
-                              {statusInfo.icon} {statusInfo.label}
-                            </span>
-                            <span className="text-xs text-gray-500">#{order.create_order.create_id.slice(0, 6)}</span>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center space-x-2">
+                            {getAssetLogo(getAssetSymbol(order.source_swap.asset))}
+                            <ArrowRight className="w-4 h-4 text-gray-400" />
+                            {getAssetLogo(getAssetSymbol(order.destination_swap.asset))}
                           </div>
-                          <ArrowRight className="w-4 h-4 text-gray-400" />
+                          <AlertCircle className="w-4 h-4 text-yellow-600" />
                         </div>
-
-                        {/* Order Summary */}
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between text-sm">
-                            <div className="flex items-center gap-2">
-                              {getAssetLogo(sourceSymbol)}
-                              <span className="font-medium">{sourceSymbol}</span>
-                            </div>
-                            <span className="text-gray-600">
-                              {formatAmount(order.source_swap.amount, assets.find(a => a.asset.symbol === sourceSymbol)?.asset.decimals ?? 18)}
-                            </span>
-                          </div>
-                          
-                          <div className="flex items-center justify-center">
-                            <div className="w-4 h-4 bg-gray-200 rounded-full flex items-center justify-center">
-                              <ArrowRight className="w-3 h-3 text-gray-500" />
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center justify-between text-sm">
-                            <div className="flex items-center gap-2">
-                              {getAssetLogo(destinationSymbol)}
-                              <span className="font-medium">{destinationSymbol}</span>
-                            </div>
-                            <span className="text-gray-600">
-                              {formatAmount(order.destination_swap.amount, assets.find(a => a.asset.symbol === destinationSymbol)?.asset.decimals ?? 18)}
-                            </span>
-                          </div>
+                        <div className="text-sm text-gray-600">
+                          {formatAmount(order.source_swap.amount)} → {formatAmount(order.destination_swap.amount)}
                         </div>
-
-                        {/* Date */}
-                        <div className="mt-3 pt-3 border-t border-gray-200">
-                          <span className="text-xs text-gray-500">{formatDate(order.created_at)}</span>
+                        <div className="text-xs text-gray-500 mt-1">
+                          Ready for redemption
                         </div>
-                      </motion.div>
-                    );
-                  })}
+                      </div>
+                    ))}
+                    {pendingOrders.length > 3 && (
+                      <div className="text-center text-sm text-yellow-700">
+                        +{pendingOrders.length - 3} more pending orders
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
+
+              {/* All Orders Section */}
+              <div className="p-4">
+                <h3 className="font-medium mb-3">All Orders</h3>
+                
+                {isLoadingUserOrders && (
+                  <div className="flex items-center justify-center py-8">
+                    <RefreshCw className="w-6 h-6 animate-spin text-blue-500" />
+                  </div>
+                )}
+
+                {userOrdersError && (
+                  <div className="text-center py-8 text-red-600">
+                    <AlertCircle className="w-8 h-8 mx-auto mb-2" />
+                    <p>{userOrdersError}</p>
+                    <button
+                      onClick={fetchOrders}
+                      className="mt-2 text-blue-600 hover:underline"
+                    >
+                      Try again
+                    </button>
+                  </div>
+                )}
+
+                {!isLoadingUserOrders && !userOrdersError && userOrders.length === 0 && (
+                  <div className="text-center py-8 text-gray-500">
+                    <Clock className="w-8 h-8 mx-auto mb-2" />
+                    <p>No orders found</p>
+                  </div>
+                )}
+
+                                 {!isLoadingUserOrders && !userOrdersError && userOrders.length > 0 && (
+                   <div className="space-y-3">
+                     {userOrders.map((order: any) => {
+                       const statusInfo = getOrderStatusInfo(order.status);
+                       const isPending = pendingOrders.some(p => p.create_order.create_id === order.create_order.create_id);
+                       
+                       return (
+                         <div
+                           key={order.create_order.create_id}
+                           className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                             isPending 
+                               ? 'bg-yellow-50 border-yellow-200 hover:bg-yellow-100' 
+                               : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                           }`}
+                           onClick={() => onOrderClick(order.create_order.create_id)}
+                         >
+                           <div className="flex items-center justify-between mb-2">
+                             <div className="flex items-center space-x-2">
+                               {getAssetLogo(getAssetSymbol(order.source_swap.asset))}
+                               <ArrowRight className="w-4 h-4 text-gray-400" />
+                               {getAssetLogo(getAssetSymbol(order.destination_swap.asset))}
+                             </div>
+                             <div className={`px-2 py-1 rounded-full text-xs font-medium ${statusInfo.color}`}>
+                               {statusInfo.label}
+                             </div>
+                           </div>
+                           <div className="text-sm text-gray-600">
+                             {formatAmount(order.source_swap.amount)} → {formatAmount(order.destination_swap.amount)}
+                           </div>
+                           <div className="text-xs text-gray-500 mt-1">
+                             {new Date(order.created_at).toLocaleDateString()}
+                           </div>
+                         </div>
+                       );
+                     })}
+                   </div>
+                 )}
+              </div>
             </div>
           </motion.div>
         </>
