@@ -4,6 +4,7 @@ use bitcoin::Network;
 use primitives::{htlc::BitcoinHTLC, types::{MatchedOrder}};
 use std::{time::Duration, str::FromStr};
 use tokio::time;
+use moka::future::Cache;
 
 pub struct OrderToActionMapper {
     wallet: HTLCWallet,
@@ -44,7 +45,7 @@ impl OrderToActionMapper {
             order.destination_swap.secret_hash.clone(),
             order.destination_swap.initiator.clone(),
             order.destination_swap.redeemer.clone(),
-            12, // Default timelock - you might want to get this from order data
+            order.destination_swap.timelock as i64, // Default timelock - you might want to get this from order data
             self.network,
         )?;
 
@@ -177,6 +178,7 @@ pub struct Executor {
     orderbook: Box<dyn Orderbook + Send + Sync>,
     mapper: OrderToActionMapper,
     user_addresses: Vec<String>,
+    executed_actions: Cache<String, bool>,
 }
 
 impl Executor {
@@ -189,6 +191,7 @@ impl Executor {
             orderbook,
             mapper,
             user_addresses,
+            executed_actions: Cache::new(1000), // Cache up to 1000 executed actions
         }
     }
 
@@ -219,28 +222,51 @@ impl Executor {
         println!("Found {} pending orders", orders.len());
 
         for order in &orders {
+            let order_id = order.create_order.create_id.clone().unwrap_or_default();
+            
             match self.mapper.map(order).await {
                 Ok(action) => {
                     match action {
                         HTLCAction::Init { order_id, transaction, htlc } => {
-                            println!("Processing INIT for order: {}", order_id);
-                            self.broadcast_transaction(&transaction).await?;
+                            let action_key = format!("init_{}", order_id);
+                            if !self.is_action_executed(&action_key).await {
+                                println!("Processing INIT for order: {}", order_id);
+                                if let Ok(()) = self.broadcast_transaction(&transaction).await {
+                                    self.mark_action_executed(&action_key).await;
+                                }
+                            } else {
+                                println!("INIT action already executed for order: {}", order_id);
+                            }
                         }
                         HTLCAction::Redeem { order_id, transaction, secret } => {
-                            println!("Processing REDEEM for order: {}", order_id);
-                            self.broadcast_transaction(&transaction).await?;
+                            let action_key = format!("redeem_{}", order_id);
+                            if !self.is_action_executed(&action_key).await {
+                                println!("Processing REDEEM for order: {}", order_id);
+                                if let Ok(()) = self.broadcast_transaction(&transaction).await {
+                                    self.mark_action_executed(&action_key).await;
+                                }
+                            } else {
+                                println!("REDEEM action already executed for order: {}", order_id);
+                            }
                         }
                         HTLCAction::Refund { order_id, transaction } => {
-                            println!("Processing REFUND for order: {}", order_id);
-                            self.broadcast_transaction(&transaction).await?;
+                            let action_key = format!("refund_{}", order_id);
+                            if !self.is_action_executed(&action_key).await {
+                                println!("Processing REFUND for order: {}", order_id);
+                                if let Ok(()) = self.broadcast_transaction(&transaction).await {
+                                    self.mark_action_executed(&action_key).await;
+                                }
+                            } else {
+                                println!("REFUND action already executed for order: {}", order_id);
+                            }
                         }
                         HTLCAction::NoOp => {
-                            println!("No action needed for order: {:?}", order.create_order.create_id);
+                            println!("No action needed for order: {:?}", order_id);
                         }
                     }
                 }
                 Err(e) => {
-                    println!("Error mapping order {:?}: {}", order.create_order.create_id, e);
+                    println!("Error mapping order {:?}: {}", order_id, e);
                 }
             }
         }
@@ -260,5 +286,13 @@ impl Executor {
                 Err(anyhow::anyhow!("Failed to broadcast transaction: {}", e))
             }
         }
+    }
+
+    async fn is_action_executed(&self, action_key: &str) -> bool {
+        self.executed_actions.contains_key(action_key)
+    }
+
+    async fn mark_action_executed(&self, action_key: &str) {
+        self.executed_actions.insert(action_key.to_string(), true).await;
     }
 }

@@ -171,7 +171,7 @@ impl BitcoinStore {
                 ]
             };
             
-            let mut cursor = collection.find(filter).await?;
+            let mut cursor: mongodb::Cursor<MatchedOrder> = collection.find(filter).await?;
             let mut swaps = Vec::new();
             
             while let Some(matched_order) = cursor.next().await {
