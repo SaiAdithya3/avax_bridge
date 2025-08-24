@@ -198,8 +198,6 @@ export class ExecutorService {
         const txHash = result.value;
         console.log(`Destination swap initiated for order ${orderId}: ${txHash}`);
         
-        // Mark action as processed with transaction hash
-        this.markActionProcessed(orderId, action, txHash);
         
         // Update database with transaction hash
         await this.databaseService.updateOrder(orderId, {
@@ -213,13 +211,9 @@ export class ExecutorService {
         console.log(`Successfully processed ${action} for order ${orderId}`);
       } else {
         console.error(`Failed to initiate destination swap for order ${orderId}: ${result.error}`);
-        // Mark action as processed to prevent repeated failures
-        this.markActionProcessed(orderId, action);
       }
     } catch (error) {
       console.error(`Error handling counter party initiated for order ${orderId}: ${error}`);
-      // Mark action as processed to prevent repeated errors
-      this.markActionProcessed(orderId, action);
     }
   }
 
@@ -236,8 +230,6 @@ export class ExecutorService {
         const txHash = result.value;
         console.log(`Destination swap redeemed for order ${orderId}: ${txHash}`);
         
-        // Mark action as processed with transaction hash
-        this.markActionProcessed(orderId, action, txHash);
         
         // Update database with transaction hash
         await this.databaseService.updateOrder(orderId, {
@@ -252,12 +244,12 @@ export class ExecutorService {
       } else {
         console.error(`Failed to redeem destination swap for order ${orderId}: ${result.error}`);
         // Mark action as processed to prevent repeated failures
-        this.markActionProcessed(orderId, action);
+        
       }
     } catch (error) {
       console.error(`Error handling counter party redeemed for order ${orderId}: ${error}`);
       // Mark action as processed to prevent repeated errors
-      this.markActionProcessed(orderId, action);
+      
     }
   }
 
