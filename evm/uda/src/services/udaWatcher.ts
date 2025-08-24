@@ -232,8 +232,7 @@ export class UDAWatcher {
         console.warn(`Warning: Secret hash length is ${secretHash.length - 2} bytes, expected 32 bytes`);
       }
       
-      console.log(`   Formatted Secret Hash: ${secretHash}`);
-      console.log(`   Secret Hash Length: ${(secretHash.length - 2) / 2} bytes`);
+      console.log("")
                     
       const tx = await contract.createERC20SwapAddress(
         balanceCheck.tokenAddress,        // token address
