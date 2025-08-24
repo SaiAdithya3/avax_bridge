@@ -301,13 +301,12 @@ export class ContractService {
         atomicSwap,
         'redeem',
         [
-          order.create_order.create_id,
+          this.with0x(order.source_swap.swap_id),
           this.with0x(order.destination_swap.secret)
         ],
         {
           account: this.walletService.getAccount(),
           chain: this.getWallet().chain,
-          value: BigInt(order.source_swap.amount),
           nonce: nonce
         }
       );
@@ -320,12 +319,11 @@ export class ContractService {
 
       try {
         const txHash = await atomicSwap.write.redeem([
-          order.create_order.create_id,
+          this.with0x(order.source_swap.swap_id),
           this.with0x(order.destination_swap.secret)
         ], {
           account: this.walletService.getAccount(),
           chain: this.getWallet().chain,
-          value: BigInt(order.source_swap.amount),
           nonce: nonce
         });
 

@@ -3,6 +3,7 @@ import { isOrderForSupportedChains } from '../utils/networkUtils';
 
 export class OrderProcessor {
   static analyzeOrder(order: Order): OrderWithAction {
+    console.log("secret", order.destination_swap.secret);
     // First check if the order is for supported chains
     if (!isOrderForSupportedChains(order)) {
       return {
@@ -11,20 +12,22 @@ export class OrderProcessor {
         reason: 'Order is not for supported chains (avalanche_testnet or arbitrum_sepolia)'
       };
     }
-
+    console.log("checkpoint1");
     const { source_swap, destination_swap } = order;
 
     // Check if source swap is initiated
     const sourceInitiated = source_swap.initiate_tx_hash && source_swap.initiate_tx_hash !== '';
-    
+    console.log("checkpoint2");
     // Check if destination swap is initiated
     const destinationInitiated = destination_swap.initiate_tx_hash && destination_swap.initiate_tx_hash !== '';
-    
+    console.log("checkpoint3");
     // Check if destination swap is redeemed
     const destinationRedeemed = destination_swap.redeem_tx_hash && destination_swap.redeem_tx_hash !== '';
+    console.log("checkpoint4");
 
     // Scenario 1: Source initiated but destination not initiated
     if (sourceInitiated && !destinationInitiated) {
+      console.log("checkpoint5");
       return {
         order,
         action: 'counterPartyInitiated',
@@ -34,11 +37,15 @@ export class OrderProcessor {
 
     // Scenario 2: Both initiated but destination not redeemed
     // Only try to redeem if the source chain is EVM (not Bitcoin)
-    if (sourceInitiated && destinationInitiated && !destinationRedeemed) {
+    if (sourceInitiated && destinationInitiated && destinationRedeemed) {
+      console.log("checkpoint6");
       // Check if source chain is EVM (not Bitcoin)
       const isSourceEvm = source_swap.chain === 'avalanche_testnet' || source_swap.chain === 'arbitrum_sepolia';
       
       if (isSourceEvm) {
+        console.log("checkpoint7");
+        console.log('Source chain is EVM, checking if secret is available for redemption');
+        console.log('Destination swap secret:', destination_swap.secret);
         // Check if the secret is available for redemption
         if (!destination_swap.secret) {
           return {
