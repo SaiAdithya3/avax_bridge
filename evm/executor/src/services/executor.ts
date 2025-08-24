@@ -12,6 +12,7 @@ export class ExecutorService {
   private walletService: WalletService;
   private isRunning: boolean = false;
   private intervalId: NodeJS.Timeout | null = null;
+  private processedActions: Map<string, { action: string; timestamp: number; txHash?: string }> = new Map();
 
   constructor() {
     this.databaseService = new DatabaseService();
@@ -19,13 +20,52 @@ export class ExecutorService {
     this.contractService = new ContractService(this.walletService);
   }
 
+  private getActionKey(orderId: string, action: string): string {
+    return `${orderId}:${action}`;
+  }
+
+  private isActionProcessed(orderId: string, action: string): boolean {
+    const key = this.getActionKey(orderId, action);
+    const processed = this.processedActions.get(key);
+    
+    if (!processed) {
+      return false;
+    }
+
+    // Check if the action was processed in the last 5 minutes
+    const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+    return processed.timestamp > fiveMinutesAgo;
+  }
+
+  private markActionProcessed(orderId: string, action: string, txHash?: string): void {
+    const key = this.getActionKey(orderId, action);
+    this.processedActions.set(key, {
+      action,
+      timestamp: Date.now(),
+      txHash
+    });
+    
+    // Clean up old entries (older than 1 hour)
+    const oneHourAgo = Date.now() - (60 * 60 * 1000);
+    for (const [cacheKey, data] of this.processedActions.entries()) {
+      if (data.timestamp < oneHourAgo) {
+        this.processedActions.delete(cacheKey);
+      }
+    }
+  }
+
+  private clearActionCache(orderId: string, action: string): void {
+    const key = this.getActionKey(orderId, action);
+    this.processedActions.delete(key);
+  }
+
   async start(): Promise<Result<void, string>> {
     try {
       // Connect to database
-      // const dbResult = await this.databaseService.connect();
-      // if (dbResult.isErr()) {
-      //   return err(`Failed to connect to database: ${dbResult.error}`);
-      // }
+       const dbResult = await this.databaseService.connect();
+       if (dbResult.isErr()) {
+         return err(`Failed to connect to database: ${dbResult.error}`);
+      }
 
       console.log('Starting EVM Executor...');
       console.log(`Wallet address: ${this.walletService.getAddress()}`);
@@ -65,7 +105,7 @@ export class ExecutorService {
     this.intervalId = setInterval(async () => {
       if (!this.isRunning) return;
       
-      // await this.processOrders();
+      await this.processOrders();
     }, EXECUTOR_CONFIG.pollInterval);
   }
 
@@ -118,6 +158,12 @@ export class ExecutorService {
     const { order, action, reason } = orderWithAction;
     const orderId = order.create_order.create_id;
 
+    // Check if this action has already been processed recently
+    if (this.isActionProcessed(orderId, action)) {
+      console.log(`Skipping order ${orderId}: ${action} - Already processed recently`);
+      return;
+    }
+
     console.log(`Processing order ${orderId}: ${action} - ${reason}`);
     console.log(`Source chain: ${order.source_swap.chain}, Destination chain: ${order.destination_swap.chain}`);
 
@@ -141,6 +187,7 @@ export class ExecutorService {
 
   private async handleCounterPartyInitiated(order: any): Promise<void> {
     const orderId = order.create_order.create_id;
+    const action = 'counterPartyInitiated';
     
     try {
       console.log(`Initiating destination swap for order ${orderId} on chain ${order.destination_swap.chain}`);
@@ -151,6 +198,9 @@ export class ExecutorService {
         const txHash = result.value;
         console.log(`Destination swap initiated for order ${orderId}: ${txHash}`);
         
+        // Mark action as processed with transaction hash
+        this.markActionProcessed(orderId, action, txHash);
+        
         // Update database with transaction hash
         await this.databaseService.updateOrder(orderId, {
           destination_swap: {
@@ -159,16 +209,23 @@ export class ExecutorService {
             initiate_block_number: null // Will be updated by watcher
           }
         });
+        
+        console.log(`Successfully processed ${action} for order ${orderId}`);
       } else {
         console.error(`Failed to initiate destination swap for order ${orderId}: ${result.error}`);
+        // Mark action as processed to prevent repeated failures
+        this.markActionProcessed(orderId, action);
       }
     } catch (error) {
       console.error(`Error handling counter party initiated for order ${orderId}: ${error}`);
+      // Mark action as processed to prevent repeated errors
+      this.markActionProcessed(orderId, action);
     }
   }
 
   private async handleCounterPartyRedeemed(order: any): Promise<void> {
     const orderId = order.create_order.create_id;
+    const action = 'counterPartyRedeemed';
     
     try {
       console.log(`Redeeming destination swap for order ${orderId} on chain ${order.source_swap.chain}`);
@@ -179,6 +236,9 @@ export class ExecutorService {
         const txHash = result.value;
         console.log(`Destination swap redeemed for order ${orderId}: ${txHash}`);
         
+        // Mark action as processed with transaction hash
+        this.markActionProcessed(orderId, action, txHash);
+        
         // Update database with transaction hash
         await this.databaseService.updateOrder(orderId, {
           destination_swap: {
@@ -187,11 +247,17 @@ export class ExecutorService {
             redeem_block_number: null // Will be updated by watcher
           }
         });
+        
+        console.log(`Successfully processed ${action} for order ${orderId}`);
       } else {
         console.error(`Failed to redeem destination swap for order ${orderId}: ${result.error}`);
+        // Mark action as processed to prevent repeated failures
+        this.markActionProcessed(orderId, action);
       }
     } catch (error) {
       console.error(`Error handling counter party redeemed for order ${orderId}: ${error}`);
+      // Mark action as processed to prevent repeated errors
+      this.markActionProcessed(orderId, action);
     }
   }
 
@@ -200,12 +266,27 @@ export class ExecutorService {
     walletAddress: string;
     pollInterval: number;
     supportedChains: string[];
+    cacheStats: {
+      totalCachedActions: number;
+      cacheEntries: Array<{ key: string; action: string; timestamp: number; txHash?: string }>;
+    };
   }> {
+    const cacheEntries = Array.from(this.processedActions.entries()).map(([key, data]) => ({
+      key,
+      action: data.action,
+      timestamp: data.timestamp,
+      txHash: data.txHash
+    }));
+
     return {
       isRunning: this.isRunning,
       walletAddress: this.walletService.getAddress(),
       pollInterval: EXECUTOR_CONFIG.pollInterval,
-      supportedChains: ['avalanche_testnet', 'arbitrum_sepolia']
+      supportedChains: ['avalanche_testnet', 'arbitrum_sepolia'],
+      cacheStats: {
+        totalCachedActions: this.processedActions.size,
+        cacheEntries
+      }
     };
   }
 }

@@ -35,7 +35,7 @@ export const isOrderForSupportedChains = (order: any): boolean => {
   const sourceChain = order.source_swap?.chain;
   const destinationChain = order.destination_swap?.chain;
   
-  return isSupportedChain(sourceChain) && isSupportedChain(destinationChain);
+  return isSupportedChain(sourceChain) || isSupportedChain(destinationChain);
 };
 
 // Switch or add network function
