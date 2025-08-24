@@ -58,12 +58,8 @@ export class DatabaseService {
           {
             'source_swap.initiate_tx_hash': { $ne: null},
             'destination_swap.initiate_tx_hash': { $ne: null },
-            'destination_swap.redeem_tx_hash': { $ne: [null] }
-          },
-          {
-            'source_swap.initiate_tx_hash': { $ne: null},
-            'destination_swap.initiate_tx_hash': { $ne: null },
-            'destination_swap.redeem_tx_hash': { $in: [null] }
+            'destination_swap.redeem_tx_hash': { $ne: [null] },
+            'source_swap.redeem_tx_hash': { $in: [null] }
           }
         ]
       }).toArray();
