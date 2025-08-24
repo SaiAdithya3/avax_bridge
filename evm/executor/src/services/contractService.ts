@@ -1,4 +1,5 @@
 import { getContract, type WalletClient } from 'viem';
+import { getTransactionCount, waitForTransactionReceipt } from 'viem/actions';
 import { err, ok } from 'neverthrow';
 import { WalletService } from './wallet';
 import { AsyncResult, Order, EvmChain } from '../types';
@@ -56,6 +57,57 @@ export class ContractService {
     }
   }
 
+  private async checkAllowance(tokenAddress: string, spenderAddress: string, requiredAmount: bigint): Promise<AsyncResult<boolean, string>> {
+    try {
+      const tokenContract = getContract({
+        address: this.with0x(tokenAddress),
+        abi: erc20ABI,
+        client: this.getWallet(),
+      });
+
+      const allowance = await tokenContract.read.allowance([
+        this.walletService.getAccount().address,
+        this.with0x(spenderAddress)
+      ]) as bigint;
+
+      return ok(allowance >= requiredAmount);
+    } catch (error) {
+      return err(`Failed to check allowance: ${String(error)}`);
+    }
+  }
+
+  private async approveWithNonceManagement(tokenAddress: string, spenderAddress: string, amount: bigint): Promise<AsyncResult<string, string>> {
+    try {
+      const tokenContract = getContract({
+        address: this.with0x(tokenAddress),
+        abi: erc20ABI,
+        client: this.getWallet(),
+      });
+
+      // Get current nonce
+      const nonce = await getTransactionCount(this.getWallet(), {
+        address: this.walletService.getAddress()
+      });
+
+      // Approve with explicit nonce
+      const txHash = await tokenContract.write.approve([
+        this.with0x(spenderAddress),
+        amount
+      ], {
+        account: this.walletService.getAccount(),
+        chain: this.getWallet().chain,
+        nonce: nonce
+      });
+
+      // Wait for transaction to be mined
+      await waitForTransactionReceipt(this.getWallet(), { hash: txHash });
+
+      return ok(txHash);
+    } catch (error) {
+      return err(`Failed to approve: ${String(error)}`);
+    }
+  }
+
   async initiate(order: Order): Promise<AsyncResult<string, string>> {
     try {
       // Switch to the destination chain for the operation
@@ -64,30 +116,38 @@ export class ContractService {
         return err(chainResult.error);
       }
 
-      // For ERC20 tokens, we need to approve the atomic swap contract first
-      const tokenAddress = await this.getTokenAddress(order.destination_swap.asset);
-      if (tokenAddress.isErr()) {
-        return err(tokenAddress.error);
+      const tokenAddress = this.with0x(order.destination_swap.token_address);
+      const htlcAddress = this.with0x(order.destination_swap.htlc_address);
+      const amount = BigInt(order.destination_swap.amount);
+
+      // Check if approval is already sufficient
+      const allowanceCheck = await this.checkAllowance(tokenAddress, htlcAddress, amount);
+      if (allowanceCheck.isErr()) {
+        return err(allowanceCheck.error);
       }
 
-      const tokenContract = getContract({
-        address: this.with0x(tokenAddress.value),
-        abi: erc20ABI,
-        client: this.getWallet(),
+      // Only approve if allowance is insufficient
+      if (!allowanceCheck.value) {
+        console.log(`Insufficient allowance, approving ${amount} tokens for HTLC contract ${htlcAddress}`);
+        
+        const approvalResult = await this.approveWithNonceManagement(tokenAddress, htlcAddress, amount);
+        if (approvalResult.isErr()) {
+          return err(`Approval failed: ${approvalResult.error}`);
+        }
+        
+        console.log(`Approval successful: ${approvalResult.value}`);
+      } else {
+        console.log(`Sufficient allowance already exists for HTLC contract ${htlcAddress}`);
+      }
+
+      // Get current nonce for the initiate transaction
+      const nonce = await getTransactionCount(this.getWallet(), {
+        address: this.walletService.getAddress()
       });
 
-      // Approve the atomic swap contract to spend tokens
-      await tokenContract.write.approve([
-        this.with0x(order.destination_swap.asset),
-        order.destination_swap.amount
-      ], {
-        account: this.walletService.getAccount(),
-        chain: this.getWallet().chain,
-      });
-
-      // Initiate the atomic swap
+      // Initiate the atomic swap with explicit nonce
       const atomicSwap = getContract({
-        address: this.with0x(order.destination_swap.htlc_address),
+        address: htlcAddress,
         abi: atomicSwapABI,
         client: this.getWallet(),
       });
@@ -95,13 +155,17 @@ export class ContractService {
       const txHash = await atomicSwap.write.initiate([
         this.with0x(order.destination_swap.secret_hash),
         BigInt(order.destination_swap.timelock),
-        BigInt(order.destination_swap.amount),
+        amount,
         this.with0x(order.destination_swap.redeemer)
       ], {
         account: this.walletService.getAccount(),
         chain: this.getWallet().chain,
-        value: BigInt(order.destination_swap.amount),
+        value: amount,
+        nonce: nonce
       });
+
+      // Wait for transaction to be mined
+      await waitForTransactionReceipt(this.getWallet(), { hash: txHash });
 
       return ok(txHash);
     } catch (error) {
@@ -123,6 +187,11 @@ export class ContractService {
       this.walletService = new WalletService();
       await this.walletService.switchToChain(targetChain);
 
+      // Get current nonce
+      const nonce = await getTransactionCount(this.getWallet(), {
+        address: this.walletService.getAddress()
+      });
+
       const atomicSwap = getContract({
         address: this.with0x(order.source_swap.htlc_address),
         abi: atomicSwapABI,
@@ -136,7 +205,11 @@ export class ContractService {
         account: this.walletService.getAccount(),
         chain: this.getWallet().chain,
         value: BigInt(order.source_swap.amount),
+        nonce: nonce
       });
+
+      // Wait for transaction to be mined
+      await waitForTransactionReceipt(this.getWallet(), { hash: txHash });
 
       return ok(txHash);
     } catch (error) {

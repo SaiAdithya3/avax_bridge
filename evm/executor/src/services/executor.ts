@@ -22,10 +22,10 @@ export class ExecutorService {
   async start(): Promise<Result<void, string>> {
     try {
       // Connect to database
-      // const dbResult = await this.databaseService.connect();
-      // if (dbResult.isErr()) {
-      //   return err(`Failed to connect to database: ${dbResult.error}`);
-      // }
+       const dbResult = await this.databaseService.connect();
+       if (dbResult.isErr()) {
+         return err(`Failed to connect to database: ${dbResult.error}`);
+      }
 
       console.log('Starting EVM Executor...');
       console.log(`Wallet address: ${this.walletService.getAddress()}`);
@@ -65,7 +65,7 @@ export class ExecutorService {
     this.intervalId = setInterval(async () => {
       if (!this.isRunning) return;
       
-      // await this.processOrders();
+      await this.processOrders();
     }, EXECUTOR_CONFIG.pollInterval);
   }
 
