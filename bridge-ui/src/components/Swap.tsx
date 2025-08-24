@@ -7,6 +7,8 @@ import { useBitcoinWallet } from '@gardenfi/wallet-connectors';
 import { useEVMWallet } from '../hooks/useEVMWallet';
 import OrderDetails from './OrderDetails';
 
+
+
 const Swap: React.FC = () => {
   const {
     fromAsset,
@@ -22,15 +24,18 @@ const Swap: React.FC = () => {
     setSendAmount,
     swapAssets,
     clearError,
+    setShowHero,
   } = useAssetsStore();
 
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
+  const [isOrderCreating, setIsOrderCreating] = useState(false);
 
   const [isDropdownOpen, setIsDropdownOpen] = useState<'from' | 'to' | null>(null);
   const { account: btcAddress } = useBitcoinWallet();
   const { address: evmAddress } = useEVMWallet();
   useEffect(() => {
     fetchAssets();
+    setShowHero(true);
   }, [fetchAssets]);
 
   const handleAssetSelect = (asset: AssetOption, type: 'from' | 'to') => {
@@ -41,6 +46,23 @@ const Swap: React.FC = () => {
     }
     setIsDropdownOpen(null);
   };
+
+  // Show loading state after order creation
+  if (isOrderCreating) {
+    return (
+      <div className="mx-auto p-6 w-[40%]">
+        <div className="relative w-full flex items-center flex-col rounded-3xl p-6">
+          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 w-full text-center">
+            <div className="flex flex-col items-center">
+              <div className="w-12 h-12 border-2 border-[#e84142] border-t-transparent rounded-full animate-spin mb-4"></div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Creating Your Order</h3>
+              <p className="text-gray-600">Please wait while we create your cross-chain swap order...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Show OrderDetails if order was created
   if (createdOrderId) {
@@ -53,7 +75,7 @@ const Swap: React.FC = () => {
   }
 
   return (
-    <div className="max-w-xl mx-auto p-6">
+    <div className="mx-auto p-6 max-w-xl w-full">
       <div className=" relative w-full flex items-center flex-col rounded-3xl p-6">
         
         <AnimatePresence>
@@ -78,7 +100,7 @@ const Swap: React.FC = () => {
         </AnimatePresence>
 
         {/* From Asset */}
-        <div className=" bg-white mb-2 w-full rounded-2xl shadow-lg border border-gray-100 p-6">
+        <div className="bg-white mb-2 w-full rounded-2xl shadow-lg border border-gray-100 p-6">
           <label className="block text-sm font-medium text-gray-700 mb-2">From</label>
           <AssetDropdown
             type="from"
@@ -113,9 +135,10 @@ const Swap: React.FC = () => {
             onClick={swapAssets}
             transition={{ duration: 0.2, ease: "linear" }}
             disabled={!fromAsset || !toAsset}
-            className="p-2 bg-[#e84142]/70 border border-[#e84142]/70 hover:bg-[#e84142]/80  rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-2 rounded-full bg-[#e84142] hover:bg-[#e84142]/90 text-white transition-colors duration-200"
+            title="Connect another wallet"
           >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="#ffffff" viewBox="0 0 24 24">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
             </svg>
           </motion.button>
@@ -148,14 +171,15 @@ const Swap: React.FC = () => {
           </div>
         </div>
 
-        {/* Bridge Button */}
+      {/* Bridge Button */}
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          disabled={!fromAsset || !toAsset || !sendAmount || isLoading || isQuoteLoading}
-          className="w-full py-3 px-4 bg-[#e84142] text-white font-medium rounded-2xl hover:bg-[#e84142] focus:outline-none focus:ring-2 focus:ring-[#e84142]/70 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          disabled={!fromAsset || !toAsset || !sendAmount || isLoading || isQuoteLoading || isOrderCreating || !btcAddress || !evmAddress}
+          className="w-full py-4 px-6 bg-gray-900 text-white font-medium rounded-2xl hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500/70 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           onClick={async () => {
             try {
+              setIsOrderCreating(true);
               const result = await createOrder({
                 btcAddress: btcAddress || '',
                 evmAddress: evmAddress || '',
@@ -167,9 +191,13 @@ const Swap: React.FC = () => {
               
               if (result.status === 'ok' && result.result) {
                 setCreatedOrderId(result.result);
+              } else {
+                console.error('Failed to create order:', result);
               }
             } catch (error) {
               console.error('Failed to create order:', error);
+            } finally {
+              setIsOrderCreating(false);
             }
           }}
         >
@@ -183,11 +211,20 @@ const Swap: React.FC = () => {
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-3"></div>
               Getting Quote...
             </div>
+          ) : isOrderCreating ? (
+            <div className="flex items-center justify-center">
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-3"></div>
+              Creating Order...
+            </div>
+          ) : !btcAddress || !evmAddress ? (
+            'Connect wallet'
           ) : (
-            'Bridge Assets'
+            'Create Order'
           )}
         </motion.button>
       </div>
+
+
     </div>
   );
 };

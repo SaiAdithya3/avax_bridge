@@ -3,13 +3,11 @@ import {
   Ok,
   Err,
   Fetcher,
-  trim0x,
   type AsyncResult,
 } from "@gardenfi/utils";
 import { erc20Abi, getContract, type WalletClient } from "viem";
 import { type APIResponse, with0x } from "@gardenfi/utils";
 
-import axios from "axios";
 import { API_URLS } from "../constants/constants";
 import { generateSecret, isEVMChain } from "./orderService";
 import { useEVMWallet } from "../hooks/useEVMWallet";
@@ -156,22 +154,38 @@ const _initiateOnErc20HTLC = async (
   }
 };
 
-export const redeem = async (order: Order): AsyncResult<string, string> => {
+export const evmRedeem = async (walletClient: WalletClient, order: Order): AsyncResult<string, string> => {
+  try {      
   const { secret } = await generateSecret(order.create_order.nonce);
-  try {
-    const res = await axios.post(API_URLS.ORDERBOOK + "/redeem", {
-      order_id: order.create_order.create_id,
-      secret: trim0x(secret),
-      perform_on: "Destination",
-    });
-    if (res.status === 200) {
-      return Ok(res.data ? res.data : "Redeem hash not found");
-    } else {
-      return Err("Redeem failed: Transaction receipt not successful");
-    }
-  } catch (error) {
-    return Err(String(error));
+  if (!walletClient) return Err("No wallet client found");
+  if (!walletClient.account) return Err("No account found");
+  
+  const _walletClient = await switchOrAddNetwork(
+    order.source_swap.chain as EvmChain,
+    walletClient as WalletClient
+  );
+  if (!_walletClient.ok) return Err(_walletClient.error);
+  const wallet = _walletClient.val.walletClient;
+  
+  if (!wallet.account) return Err("No account found");
+  if (!wallet.chain) return Err("No chain found");
+
+  if (wallet.chain.id !== getChainId(order.source_swap.chain)) {
+    return Err(`Chain mismatch. Expected ${order.source_swap.chain}, got ${wallet.chain.name}`);
   }
+  const tx = await wallet.writeContract({
+    address: with0x(order.destination_swap.htlc_address),
+    abi: AtomicSwapABI ,
+    functionName: "redeem",
+    args: [order.source_swap.swap_id as `0x${string}`, secret],
+    account: wallet.account,
+    chain: wallet.chain
+  })
+  if (!tx) return Err("Failed to send transaction");
+  return Ok(tx);
+} catch (error) {
+    return Err(String(error));
+}
 };
 
 export const initiateViaUDA = async (walletClient: WalletClient, order: Order): AsyncResult<`0x${string}`, string> => {

@@ -13,7 +13,6 @@
     "@gardenfi/utils": "2.4.6-beta.1",
     "@gardenfi/wallet-connectors": "2.3.6-beta.5",
     "@tanstack/react-query": "^5.17.9",
-    "@types/qrcode": "^1.5.5",
     "axios": "^1.6.5",
     "framer-motion": "^11.0.3",
     "lucide-react": "^0.303.0",
@@ -26,6 +25,7 @@
     "zustand": "^4.4.7"
   },
   "devDependencies": {
+    "@types/qrcode": "^1.5.5",
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
     "@typescript-eslint/eslint-plugin": "^6.14.0",

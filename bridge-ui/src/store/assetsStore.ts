@@ -52,6 +52,7 @@ interface AssetsState {
   isQuoteLoading: boolean;
   error: string | null;
   quoteDebounceTimer: NodeJS.Timeout | null;
+  showHero: boolean;
   
   // Actions
   fetchAssets: () => Promise<void>;
@@ -62,6 +63,7 @@ interface AssetsState {
   getQuote: () => Promise<void>;
   debouncedGetQuote: () => void;
   clearError: () => void;
+  setShowHero: (show: boolean) => void;
 }
 
 // Helper to get the canonical asset key for backend (e.g., 'bitcoin' for BTC, 'avax' for AVAX, etc.)
@@ -105,7 +107,7 @@ export const useAssetsStore = create<AssetsState>()(
       isQuoteLoading: false,
       error: null,
       quoteDebounceTimer: null,
-
+      showHero: false,
       fetchAssets: async () => {
         try {
           set({ isLoading: true, error: null });
@@ -289,6 +291,8 @@ export const useAssetsStore = create<AssetsState>()(
         }
       },
 
+      setShowHero: (show: boolean) => set({ showHero: show }),
+
       clearError: () => set({ error: null }),
     }),
     {
@@ -298,6 +302,7 @@ export const useAssetsStore = create<AssetsState>()(
         toAsset: state.toAsset,
         sendAmount: state.sendAmount,
         receiveAmount: state.receiveAmount,
+        showHero: state.showHero,
       }),
     }
   )
