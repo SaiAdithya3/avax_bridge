@@ -6,6 +6,8 @@ import { API_URLS } from '../constants/constants';
 import QRCode from 'qrcode';
 import type { Order } from '../types/api';
 import { useAssetsStore } from '../store/assetsStore';
+import { isEVMChain } from '../services/orderService';
+import { useBitcoinWallet } from '@gardenfi/wallet-connectors';
 
 interface OrderDetailsProps {
   orderId: string;
@@ -21,8 +23,9 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ orderId, onBack }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isInitiating, setIsInitiating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const {provider} = useBitcoinWallet();
   const [initiationHash, setInitiationHash] = useState<string | null>(null);
-  const [isCompleted, setIsCompleted] = useState(true);
+  const [isCompleted, setIsCompleted] = useState(false);
   const { assets } = useAssetsStore();
 //   console.log(isCompleted)
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
@@ -36,11 +39,11 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ orderId, onBack }) => {
         setOrder(data.result);
 
         if (data?.source_swap?.initiate_tx_hash) {
-          setIsCompleted(true);
+          setIsCompleted(false);
           setInitiationHash(data.source_swap.initiate_tx_hash);
           setQrCodeUrl('');
         } else {
-          setIsCompleted(true);
+          setIsCompleted(false);
           if (data?.source_swap?.deposit_address) {
             const qrCode = await QRCode.toDataURL(data.source_swap.deposit_address);
             console.log("qrCode", qrCode)
@@ -101,6 +104,31 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ orderId, onBack }) => {
     };
   }, [orderId]);
 
+  const handleInit = async () => {
+    if (!order || !walletClient || !evmAddress) return;
+    setIsInitiating(true);
+    setError(null);
+    if(isEVMChain(order.source_swap.chain)){
+      await handleInitiateUDA();
+    }else{
+      await handleBitcoinInit();
+    }
+  }
+
+  const handleBitcoinInit = async () => {
+    if (!order || !provider || !order.source_swap.deposit_address) return;
+    setIsInitiating(true);
+    setError(null);
+    const bitcoinRes = await provider.sendBitcoin(
+        order.source_swap.deposit_address,
+        Number(order.source_swap.amount)
+      );
+    if(bitcoinRes.ok){
+      setInitiationHash(bitcoinRes.val);
+    }else{
+      setError(bitcoinRes.error);
+    }
+  }
 
   const handleInitiateUDA = async () => {
     if (!order || !walletClient || !evmAddress) return;
@@ -319,7 +347,7 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ orderId, onBack }) => {
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  onClick={handleInitiateUDA}
+                  onClick={handleInit}
                   disabled={isInitiating || !evmAddress}
                   className="w-full py-3 px-4 bg-[#e84142] text-white font-medium rounded-xl hover:bg-[#e84142]/90 focus:outline-none focus:ring-2 focus:ring-[#e84142]/70 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >

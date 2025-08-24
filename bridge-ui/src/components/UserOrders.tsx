@@ -479,16 +479,6 @@ const UserOrders: React.FC = () => {
           </div>
         )}
       </AnimatePresence>
-
-      {/* Polling Indicator */}
-      {isPolling && (
-        <div className="fixed bottom-6 right-6 bg-white rounded-xl shadow-lg border border-gray-100 p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-            <span className="text-sm text-gray-600">Live updates enabled</span>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
