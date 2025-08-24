@@ -46,13 +46,14 @@ export class OrderProcessor {
             action: 'pending',
             reason: 'Both swaps initiated, but secret is not available for redemption yet'
           };
+        } else {
+          return {
+            order,
+            action: 'counterPartyRedeemed',
+            reason: 'Both swaps initiated, need to redeem destination swap (source is EVM)'
+          };
         }
         
-        return {
-          order,
-          action: 'counterPartyRedeemed',
-          reason: 'Both swaps initiated, need to redeem destination swap (source is EVM)'
-        };
       } else {
         // Source is Bitcoin, so we can't redeem on Bitcoin side
         // The order is effectively completed after destination initiation
