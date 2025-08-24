@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEVMWallet } from '../hooks/useEVMWallet';
-import { getFilteredOrders, getOrderStatusInfo, type OrderStatus } from '../services/orderService';
+import { getFilteredOrders, getOrderStatusInfo, parseAction, type OrderStatus } from '../services/orderService';
 import { useOrdersStore } from '../store/ordersStore';
 import { API_URLS } from '../constants/constants';
 import OrderDetails from './OrderDetails';
@@ -85,12 +85,11 @@ const UserOrders: React.FC = () => {
   // Status filter options
   const statusOptions: Array<{ value: OrderStatus | 'all'; label: string; count: number }> = [
     { value: 'all', label: 'All Orders', count: orders.length },
-    { value: 'created', label: 'Created', count: orders.filter(o => o.status === 'created').length },
-    { value: 'userInitiated', label: 'User Initiated', count: orders.filter(o => o.status === 'userInitiated').length },
-    { value: 'counterpartyInitiated', label: 'Counterparty Initiated', count: orders.filter(o => o.status === 'counterpartyInitiated').length },
-    { value: 'userRedeemed', label: 'User Redeemed', count: orders.filter(o => o.status === 'userRedeemed').length },
-    { value: 'counterPartyRedeemed', label: 'Counterparty Redeemed', count: orders.filter(o => o.status === 'counterPartyRedeemed').length },
-    { value: 'completed', label: 'Completed', count: orders.filter(o => o.status === 'completed').length },
+    { value: 'created', label: 'Awaiting Deposit', count: orders.filter(o => o.status === 'created').length },
+    { value: 'deposit_detected', label: 'Deposit Detected 0/1', count: orders.filter(o => o.status === 'deposit_detected').length },
+    { value: 'deposit_confirmed', label: 'Deposit Confirmed', count: orders.filter(o => o.status === 'deposit_confirmed').length },
+    { value: 'redeeming', label: 'Redeeming', count: orders.filter(o => o.status === 'redeeming').length },
+    { value: 'completed', label: 'Swap Completed', count: orders.filter(o => o.status === 'completed').length },
   ];
 
   // Fetch orders with polling
@@ -107,23 +106,7 @@ const UserOrders: React.FC = () => {
         const apiOrders = data.result
         
         const userOrders = apiOrders.map((order: any) => {
-          // Determine order status based on the order state
-          let status: OrderStatus = 'created';
-          
-          if (order.source_swap?.initiate_tx_hash && order.destination_swap?.initiate_tx_hash) {
-            status = 'counterpartyInitiated';
-          } else if (order.source_swap?.initiate_tx_hash) {
-            status = 'userInitiated';
-          }
-          
-          if (order.source_swap?.redeem_tx_hash && order.destination_swap?.redeem_tx_hash) {
-            status = 'completed';
-          } else if (order.source_swap?.redeem_tx_hash) {
-            status = 'userRedeemed';
-          } else if (order.destination_swap?.redeem_tx_hash) {
-            status = 'counterPartyRedeemed';
-          }
-
+          const status = parseAction(order);
           return {
             ... order,
             status,
@@ -156,23 +139,7 @@ const UserOrders: React.FC = () => {
           const apiOrders = data.result;
           
           const userOrders = apiOrders.map((order: any) => {
-            // Determine order status based on the order state
-            let status: OrderStatus = 'created';
-            
-            if (order.source_swap?.initiate_tx_hash && order.destination_swap?.initiate_tx_hash) {
-              status = 'counterpartyInitiated';
-            } else if (order.source_swap?.initiate_tx_hash) {
-              status = 'userInitiated';
-            }
-            
-            if (order.source_swap?.redeem_tx_hash && order.destination_swap?.redeem_tx_hash) {
-              status = 'completed';
-            } else if (order.source_swap?.redeem_tx_hash) {
-              status = 'userRedeemed';
-            } else if (order.destination_swap?.redeem_tx_hash) {
-              status = 'counterPartyRedeemed';
-            }
-
+            const status = parseAction(order);
             return {
              ...order,
              status,

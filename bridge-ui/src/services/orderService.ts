@@ -174,11 +174,36 @@ export const createOrder = async ({
 // Order status types
 export type OrderStatus = 
   | 'created'
-  | 'userInitiated'
-  | 'counterpartyInitiated'
-  | 'userRedeemed'
-  | 'counterPartyRedeemed'
+  | 'deposit_detected'
+  | 'deposit_confirmed'
+  | 'redeeming'
   | 'completed';
+
+// Centralized function to parse order action/state
+export const parseAction = (order: any): OrderStatus => {
+  // Check if swap is completed
+  if (order.destination_swap?.redeem_tx_hash) {
+    return 'completed';
+  }
+  
+  // Check if redeeming is in progress
+  if (order.source_swap?.initiate_tx_hash && order.destination_swap?.initiate_tx_hash) {
+    return 'redeeming';
+  }
+  
+  // Check if deposit is confirmed (has block number)
+  if (order.source_swap?.initiate_block_number) {
+    return 'deposit_confirmed';
+  }
+  
+  // Check if deposit is detected (has tx hash but no block number)
+  if (order.source_swap?.initiate_tx_hash) {
+    return 'deposit_detected';
+  }
+  
+  // Default: awaiting deposit
+  return 'created';
+};
 
 
 // Fetch user orders with polling
@@ -198,23 +223,7 @@ export const fetchUserOrders = async (
         const apiOrders = Array.isArray(response.data) ? response.data : [response.data];
         
         return apiOrders.map((order: any) => {
-          // Determine order status based on the order state
-          let status: OrderStatus = 'created';
-          
-          if (order.source_swap?.initiate_tx_hash && order.destination_swap?.initiate_tx_hash) {
-            status = 'counterpartyInitiated';
-          } else if (order.source_swap?.initiate_tx_hash) {
-            status = 'userInitiated';
-          }
-          
-          if (order.source_swap?.redeem_tx_hash && order.destination_swap?.redeem_tx_hash) {
-            status = 'completed';
-          } else if (order.source_swap?.redeem_tx_hash) {
-            status = 'userRedeemed';
-          } else if (order.destination_swap?.redeem_tx_hash) {
-            status = 'counterPartyRedeemed';
-          }
-
+          const status = parseAction(order);
           return {
             ...order, 
             status
@@ -271,37 +280,31 @@ export const getFilteredOrders = (orders: (Order & {status: OrderStatus})[], sta
 export const getOrderStatusInfo = (status: OrderStatus) => {
   const statusConfig = {
     created: {
-      label: 'Created',
+      label: 'Awaiting Deposit',
       color: 'bg-gray-100 text-gray-800',
       icon: '📋',
-      description: 'Order has been created and is waiting for initiation'
+      description: 'Order has been created and is waiting for deposit'
     },
-    userInitiated: {
-      label: 'User Initiated',
-      color: 'bg-blue-100 text-blue-800',
-      icon: '🚀',
-      description: 'You have initiated the swap on source chain'
-    },
-    counterpartyInitiated: {
-      label: 'Counterparty Initiated',
+    deposit_detected: {
+      label: 'Deposit Detected 0/1',
       color: 'bg-yellow-100 text-yellow-800',
-      icon: '⏳',
-      description: 'Counterparty has initiated the swap on destination chain'
+      icon: '🔍',
+      description: 'Deposit transaction detected, waiting for confirmation'
     },
-    userRedeemed: {
-      label: 'User Redeemed',
-      color: 'bg-green-100 text-green-800',
+    deposit_confirmed: {
+      label: 'Deposit Confirmed',
+      color: 'bg-blue-100 text-blue-800',
       icon: '✅',
-      description: 'You have redeemed the swap on destination chain'
+      description: 'Deposit confirmed, ready for destination transaction'
     },
-    counterPartyRedeemed: {
-      label: 'Counterparty Redeemed',
+    redeeming: {
+      label: 'Redeeming',
       color: 'bg-purple-100 text-purple-800',
       icon: '🔄',
-      description: 'Counterparty has redeemed the swap on source chain'
+      description: 'Swap is being redeemed'
     },
     completed: {
-      label: 'Completed',
+      label: 'Swap Completed',
       color: 'bg-emerald-100 text-emerald-800',
       icon: '🎉',
       description: 'Swap has been completed successfully'

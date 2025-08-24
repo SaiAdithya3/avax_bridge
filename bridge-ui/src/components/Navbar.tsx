@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Wallet, Plus, X } from 'lucide-react';
+import { Wallet, Plus, X, User } from 'lucide-react';
 import { useEVMWallet } from '../hooks/useEVMWallet';
 import { formatAddress } from '../utils/utils';
 import { ConnectWalletModal } from './ConnectWallet';
@@ -36,7 +36,7 @@ const itemVariants = {
   },
 };
 
-export const Navbar = () => {
+export const Navbar = ({ onOrdersClick }: { onOrdersClick: () => void }) => {
   const {
     address: evmAddress,
     isConnected: evmConnected,
@@ -87,7 +87,7 @@ export const Navbar = () => {
   const isAnyWalletConnected = evmConnected || btcConnected;
   const isBothWalletsConnected = evmConnected && btcConnected;
   const isOnlyEVMConnected = evmConnected && !btcConnected;
-  const isOnlyBTCConnected = !evmConnected && btcConnected;
+  // const isOnlyBTCConnected = !evmConnected && btcConnected;
 
   const handleCloseModal = () => {
     setModalOpen(false);
@@ -210,6 +210,16 @@ export const Navbar = () => {
                       <X className="w-4 h-4" />
                     </motion.button>
                   )}
+                  
+                  {/* Orders Profile Icon */}
+                  <motion.button
+                    variants={itemVariants}
+                    onClick={onOrdersClick}
+                    className="p-2 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-800 transition-colors duration-200"
+                    title="My Orders"
+                  >
+                    <User className="w-4 h-4" />
+                  </motion.button>
                 </motion.div>
               )}
             </motion.div>
