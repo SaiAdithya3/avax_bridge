@@ -126,8 +126,8 @@ impl OrderService {
         let destination_deposit_address = match destination_chain_type {
             SupportedChain::Bitcoin => Self::get_bitcoin_deposit_address(
                 &create_order.secret_hash,
-                &create_order.initiator_destination_address,
                 &dest_chain_config.executor_address,
+                &create_order.initiator_destination_address,
                 dest_chain_config.destination_timelock,
             ).await?,
             SupportedChain::Evm => self.get_evm_deposit_address(
