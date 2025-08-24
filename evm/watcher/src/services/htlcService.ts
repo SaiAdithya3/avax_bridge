@@ -71,7 +71,7 @@ export class HTLCService {
   /**
    * Update swap record when Initiated event occurs
    */
-  async updateSwapInitiated(orderID: string, txHash: string, blockNumber: number): Promise<boolean> {
+  async updateSwapInitiated(orderID: string, txHash: string, blockNumber: number, amount: string): Promise<boolean> {
     try {
       // Find and update the order in MongoDB
       const result = await this.updateOrderSwapField(
@@ -79,7 +79,9 @@ export class HTLCService {
         'initiate_tx_hash', 
         txHash, 
         'initiate_block_number', 
-        blockNumber.toString()
+        blockNumber.toString(),
+        'filled_amount',
+        amount
       );
       
       return result;
@@ -92,7 +94,7 @@ export class HTLCService {
   /**
    * Update swap record when Redeemed event occurs
    */
-  async updateSwapRedeemed(orderID: string, txHash: string, blockNumber: number): Promise<boolean> {
+  async updateSwapRedeemed(orderID: string, txHash: string, blockNumber: number, secret: string): Promise<boolean> {
     try {
       // Find and update the order in MongoDB
       const result = await this.updateOrderSwapField(
@@ -100,7 +102,9 @@ export class HTLCService {
         'redeem_tx_hash', 
         txHash, 
         'redeem_block_number', 
-        blockNumber.toString()
+        blockNumber.toString(),
+        'secret',
+        secret
       );
       
       return result;
@@ -140,7 +144,9 @@ export class HTLCService {
     txHashField: string, 
     txHash: string, 
     blockNumberField: string, 
-    blockNumber: string
+    blockNumber: string,
+    additionalField?: string,
+    additionalValue?: string
   ): Promise<boolean> {
     try {
       if (!this.databaseService.isDatabaseConnected()) {
@@ -173,11 +179,19 @@ export class HTLCService {
         // Source swap matches - only update source
         update[`source_swap.${txHashField}`] = txHash;
         update[`source_swap.${blockNumberField}`] = blockNumber;
+        // Add additional field if provided (e.g., secret)
+        if (additionalField && additionalValue) {
+          update[`source_swap.${additionalField}`] = additionalValue;
+        }
         logger.debug(`[HTLC] Updating source swap for order ${order._id}`);
       } else if (order.destination_swap?.swap_id === normalizedOrderID) {
         // Destination swap matches - only update destination
         update[`destination_swap.${txHashField}`] = txHash;
         update[`destination_swap.${blockNumberField}`] = blockNumber;
+        // Add additional field if provided (e.g., secret)
+        if (additionalField && additionalValue) {
+          update[`destination_swap.${additionalField}`] = additionalValue;
+        }
         logger.debug(`[HTLC] Updating destination swap for order ${order._id}`);
       }
 

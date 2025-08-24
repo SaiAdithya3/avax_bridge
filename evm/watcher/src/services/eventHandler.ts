@@ -75,6 +75,12 @@ export class EventHandlerService {
       return;
     }
 
+    // Validate and process amount
+    if (!initiatedData.amount) {
+      logger.error('Initiated event missing amount field:', initiatedData);
+      return;
+    }
+    
     logger.info(`Initiated event: Block ${event.blockNumber}, OrderID ${initiatedData.orderID}, Amount: ${initiatedData.amount}`);
     
     if (this.htlcService) {
@@ -82,7 +88,8 @@ export class EventHandlerService {
         await this.htlcService.updateSwapInitiated(
           initiatedData.orderID,
           event.transactionHash,
-          event.blockNumber
+          event.blockNumber,
+          initiatedData.amount.toString()
         );
       } catch (error) {
         logger.error(`Failed to update HTLC for initiated swap ${initiatedData.orderID}:`, error);
@@ -100,14 +107,24 @@ export class EventHandlerService {
       return;
     }
 
-    logger.info(`Redeemed event: Block ${event.blockNumber}, OrderID ${redeemedData.orderID}`);
+    // Validate and process secret
+    if (!redeemedData.secret) {
+      logger.error('Redeemed event missing secret field:', redeemedData);
+      return;
+    }
+    
+    // Strip "0x" prefix from secret if present
+    const secret = redeemedData.secret.startsWith('0x') ? redeemedData.secret.slice(2) : redeemedData.secret;
+    
+    logger.info(`Redeemed event: Block ${event.blockNumber}, OrderID ${redeemedData.orderID}, Secret: ${secret}`);
     
     if (this.htlcService) {
       try {
         await this.htlcService.updateSwapRedeemed(
           redeemedData.orderID,
           event.transactionHash,
-          event.blockNumber
+          event.blockNumber,
+          secret
         );
       } catch (error) {
         logger.error(`Failed to update HTLC for redeemed swap ${redeemedData.orderID}:`, error);
