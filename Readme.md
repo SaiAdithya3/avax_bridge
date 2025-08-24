@@ -1,9 +1,12 @@
 # 🌉 AVAX Bridge - Cross-Chain Atomic Swap Bridge
 
+<img width="1470" height="956" alt="Screenshot 2025-08-24 at 3 19 33 PM" src="https://github.com/user-attachments/assets/0ca945a1-ca2b-424a-a042-c174a2bff81f" />
+
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Rust](https://img.shields.io/badge/Rust-000000?style=flat&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Solidity](https://img.shields.io/badge/Solidity-363636?style=flat&logo=solidity&logoColor=white)](https://soliditylang.org/)
 [![React](https://img.shields.io/badge/React-20232A?style=flat&logo=react&logoColor=61DAFB)](https://reactjs.org/)
+
 
 > **Decentralized Cross-Chain Bridge with HTLC Atomic Swaps**  
 > Bridge Bitcoin, Avalanche, and other EVM chains with lightning-fast 30-second swaps using Hash Time-Locked Contracts (HTLCs) and Unique Deterministic Addresses (UDAs).
