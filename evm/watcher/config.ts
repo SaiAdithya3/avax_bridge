@@ -23,7 +23,7 @@ export const WATCHER_CONFIG = {
 export const chainConfig: Chain[] = [
   {
     id: 'arbitrum_sepolia',
-    startBlock: 187093610,
+    startBlock: 187125254,
     rpcUrl: process.env.ARBITRUM_SEPOLIA_RPC_URL || "https://arb-sepolia.g.alchemy.com/v2/GE3ckFWo2EhIEsrrYkc55",
     maxBlockSpan: 200,
     contracts: [
@@ -43,7 +43,7 @@ export const chainConfig: Chain[] = [
   },
   {
     id: 'avalanche_testnet',
-    startBlock: 45162050    ,
+    startBlock: 45165419,
     rpcUrl: process.env.AVALANCHE_TESTNET_RPC_URL || "https://avax-fuji.g.alchemy.com/v2/GE3ckFWo2EhIEsrrYkc55",
     maxBlockSpan: 1000,
     contracts: [
