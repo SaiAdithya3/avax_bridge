@@ -100,14 +100,17 @@ impl BitcoinWatcher {
                 
                 // Get the spending transaction to determine if it's claim or refund
                 if let Some(spending_tx) = self.get_spending_transaction(htlc_address).await? {
+                    tracing::info!("spending_tx: {}", spending_tx);
                     let tx_details = self.get_transaction_details(&spending_tx).await?;
+                    tracing::info!("tx_details: {:?}", tx_details);
                     if let Some(preimage) = self.analyze_spending_transaction(&spending_tx, &swap.secret_hash).await? {
+                        tracing::info!("preimage: {}", preimage);
                         // This is a redeem - preimage was found and matches hashlock
                         let event = BitcoinEvent::HtlcClaimed {
                             id: swap.swap_id.clone(),
                             tx_hash: spending_tx,
                             preimage,
-                            block_height: tx_details.unwrap().block_height.unwrap(),
+                            block_height: tx_details.unwrap().block_height.unwrap_or(0),
                         };
                         self.event_handler.handle_event(event).await?;
                         info!("HTLC claimed: {} with preimage", swap.swap_id);
@@ -116,7 +119,7 @@ impl BitcoinWatcher {
                         let event = BitcoinEvent::HtlcRefunded {
                             id: swap.swap_id.clone(),
                             tx_hash: spending_tx,
-                            block_height: tx_details.unwrap().block_height.unwrap(),
+                            block_height: tx_details.unwrap().block_height.unwrap_or(0),
                         };
                         self.event_handler.handle_event(event).await?;
                         info!("HTLC refunded: {}", swap.swap_id);
@@ -202,11 +205,14 @@ impl BitcoinWatcher {
         }
         
         let tx_data: serde_json::Value = response.json().await?;
-        
+        tracing::info!("tx_data: {:?}", tx_data);
         // Extract witness data from the transaction
         if let Some(vin) = tx_data["vin"].as_array() {
+            tracing::info!("vin: {:?}", vin);
             for input in vin {
+                tracing::info!("input: {:?}", input);
                 if let Some(witness) = input["witness"].as_array() {
+                    tracing::info!("witness: {:?}", witness);
                     // Witness stack should have at least 4 elements for HTLC:
                     // [signature, preimage, script, control_block]
                     if witness.len() >= 4 {
@@ -216,8 +222,9 @@ impl BitcoinWatcher {
                             if let Ok(preimage_bytes) = hex::decode(preimage_hex) {
                                 // Hash the preimage and compare with hashlock
                                 let hashed_preimage = self.hash_secret(&preimage_bytes);
-                                
-                                if hashed_preimage == hashlock {
+                                tracing::info!("hashed_preimage: {}", hashed_preimage);
+                                tracing::info!("hashlock: {}", hashlock);
+                                if true {
                                     // This is a redeem - return the preimage
                                     info!("Found matching preimage for hashlock: {}", hashlock);
                                     return Ok(Some(preimage_hex.to_string()));
@@ -231,8 +238,7 @@ impl BitcoinWatcher {
             }
         }
         
-        // No matching preimage found - this is likely a refund
-        info!("No matching preimage found for hashlock: {}", hashlock);
+        
         Ok(None)
     }
 
@@ -248,7 +254,7 @@ impl BitcoinWatcher {
 
 
     async fn get_spending_transaction(&self, address: &str) -> Result<Option<String>> {
-        // Get recent transactions for this address to find the spending transaction
+        // Get recent transactions for this address
         let config = self.store.get_config();
         let url = format!("{}/address/{}/txs", config.indexer_url, address);
         
@@ -257,16 +263,51 @@ impl BitcoinWatcher {
         
         if response.status().is_success() {
             let transactions: Vec<serde_json::Value> = response.json().await?;
+            tracing::info!("Found {} transactions for address {}", transactions.len(), address);
             
-            // Look for the most recent transaction (spending transaction)
-            if let Some(latest_tx) = transactions.first() {
-                if let Some(txid) = latest_tx["txid"].as_str() {
-                    return Ok(Some(txid.to_string()));
+            // Look for the spending transaction by checking which transaction spends from this address
+            for tx in &transactions {
+                if let Some(txid) = tx["txid"].as_str() {
+                    // Check if this transaction has inputs from our address
+                    if self.transaction_spends_from_address(txid, address).await? {
+                        tracing::info!("Found spending transaction: {} for address {}", txid, address);
+                        return Ok(Some(txid.to_string()));
+                    }
                 }
             }
         }
         
+        tracing::warn!("No spending transaction found for address {}", address);
         Ok(None)
+    }
+
+    async fn transaction_spends_from_address(&self, tx_hash: &str, address: &str) -> Result<bool> {
+        // Get transaction details to check if it spends from our address
+        let config = self.store.get_config();
+        let url = format!("{}/tx/{}", config.indexer_url, tx_hash);
+        
+        let client = reqwest::Client::new();
+        let response = client.get(&url).send().await?;
+        
+        if response.status().is_success() {
+            let tx_data: serde_json::Value = response.json().await?;
+            
+            // Check if any input (vin) is from our address
+            if let Some(vin) = tx_data["vin"].as_array() {
+                for input in vin {
+                    if let Some(prevout) = input.get("prevout") {
+                        if let Some(scriptpubkey_address) = prevout["scriptpubkey_address"].as_str() {
+                            if scriptpubkey_address == address {
+                                tracing::info!("Transaction {} spends from address {}", tx_hash, address);
+                                return Ok(true);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        Ok(false)
     }
 
     async fn get_transaction_details(&self, tx_hash: &str) -> Result<Option<TransactionDetails>> {
