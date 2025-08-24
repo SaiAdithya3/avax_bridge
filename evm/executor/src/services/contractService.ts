@@ -19,7 +19,10 @@ export class ContractService {
     return this.walletService.getWallet();
   }
 
-  private with0x(address: string): `0x${string}` {
+  private with0x(address: string | null | undefined): `0x${string}` {
+    if (!address) {
+      throw new Error('Address cannot be null or undefined');
+    }
     return address.startsWith('0x') ? address as `0x${string}` : `0x${address}`;
   }
 
@@ -265,6 +268,11 @@ export class ContractService {
 
   async redeem(order: Order): Promise<AsyncResult<string, string>> {
     try {
+      // Validate that the secret is available
+      if (!order.destination_swap.secret) {
+        return err('Cannot redeem swap: secret is not available. The source swap may not have been initiated yet.');
+      }
+
       // Switch to the source chain for the redeem operation
       const targetChain = order.source_swap.chain as EvmChain;
       

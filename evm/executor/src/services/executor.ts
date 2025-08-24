@@ -147,6 +147,18 @@ export class ExecutorService {
 
       // Process each actionable order
       for (const orderWithAction of actionableOrders) {
+        const { order, action } = orderWithAction;
+        
+        // Log order details for debugging
+        console.log(`Order ${order.create_order.create_id}:`);
+        console.log(`  Action: ${action}`);
+        console.log(`  Source chain: ${order.source_swap.chain}`);
+        console.log(`  Destination chain: ${order.destination_swap.chain}`);
+        console.log(`  Source initiated: ${!!order.source_swap.initiate_tx_hash}`);
+        console.log(`  Destination initiated: ${!!order.destination_swap.initiate_tx_hash}`);
+        console.log(`  Destination redeemed: ${!!order.destination_swap.redeem_tx_hash}`);
+        console.log(`  Secret available: ${!!order.destination_swap.secret}`);
+        
         await this.processOrder(orderWithAction);
       }
     } catch (error) {
@@ -199,14 +211,14 @@ export class ExecutorService {
         console.log(`Destination swap initiated for order ${orderId}: ${txHash}`);
         
         
-        // Update database with transaction hash
-        await this.databaseService.updateOrder(orderId, {
-          destination_swap: {
-            ...order.destination_swap,
-            initiate_tx_hash: txHash,
-            initiate_block_number: null // Will be updated by watcher
-          }
-        });
+        // // Update database with transaction hash
+        // await this.databaseService.updateOrder(orderId, {
+        //   destination_swap: {
+        //     ...order.destination_swap,
+        //     initiate_tx_hash: txHash,
+        //     initiate_block_number: null // Will be updated by watcher
+        //   }
+        // });
         
         console.log(`Successfully processed ${action} for order ${orderId}`);
       } else {

@@ -39,6 +39,15 @@ export class OrderProcessor {
       const isSourceEvm = source_swap.chain === 'avalanche_testnet' || source_swap.chain === 'arbitrum_sepolia';
       
       if (isSourceEvm) {
+        // Check if the secret is available for redemption
+        if (!destination_swap.secret) {
+          return {
+            order,
+            action: 'pending',
+            reason: 'Both swaps initiated, but secret is not available for redemption yet'
+          };
+        }
+        
         return {
           order,
           action: 'counterPartyRedeemed',
