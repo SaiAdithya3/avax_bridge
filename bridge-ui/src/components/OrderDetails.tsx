@@ -73,7 +73,7 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ orderId, onBack }) => {
           if (!isMounted) return;
           setOrder(data.result);
 
-          if (data?.source_swap?.initiate_tx_hash) {
+          if (data?.result.source_swap?.initiate_tx_hash) {
             setIsCompleted(true);
             setInitiationHash(data.result.source_swap.initiate_tx_hash);
             setQrCodeUrl('');
