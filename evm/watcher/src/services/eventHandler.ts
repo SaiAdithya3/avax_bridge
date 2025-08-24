@@ -100,14 +100,15 @@ export class EventHandlerService {
       return;
     }
 
-    logger.info(`Redeemed event: Block ${event.blockNumber}, OrderID ${redeemedData.orderID}`);
+    logger.info(`Redeemed event: Block ${event.blockNumber}, OrderID ${redeemedData.orderID}, Secret: ${redeemedData.secret}`);
     
     if (this.htlcService) {
       try {
         await this.htlcService.updateSwapRedeemed(
           redeemedData.orderID,
           event.transactionHash,
-          event.blockNumber
+          event.blockNumber,
+          redeemedData.secret
         );
       } catch (error) {
         logger.error(`Failed to update HTLC for redeemed swap ${redeemedData.orderID}:`, error);

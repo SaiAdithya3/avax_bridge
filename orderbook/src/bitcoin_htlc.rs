@@ -159,10 +159,10 @@ mod tests {
 
     #[test]
     fn test_get_htlc_address() {
-        let secret_hash_str = "a4ddaad30ff45cfcc7fbae1d49b78ef717341b2b81fdd73410200788b9220da4";
-        let initiator_pubkey_str = "aa86614fda03b039bf077e7be6531159c3b157166259168908097b9983156919";
-        let redeemer_pubkey_str = "4ee866579971fd784cad175fb000d1a5245c1a5031ce46fef44469000ebc8819";
-
+        let secret_hash_str = "ca76797b519b763a56845f1b02c3a46046ec71eb517e31c175d54f5a67de8d65";
+        let initiator_pubkey_str = "727dde7d4e0726212ccbd76e6ed71f1bceb957082023c39be18cb93ff93773fa";
+        let redeemer_pubkey_str = "4c77d732a1331bfcbf2acfca28ebf661ee87d2a490e269b2ebb96c153f256202";
+        
 
         let secret_hash = hex::decode(secret_hash_str).unwrap().try_into().unwrap();
         let initiator_pubkey = hex::decode(initiator_pubkey_str).unwrap();
@@ -173,10 +173,10 @@ mod tests {
             secret_hash: secret_hash,
             redeemer_pubkey: XOnlyPublicKey::from_slice(&redeemer_pubkey).unwrap(),
             initiator_pubkey: XOnlyPublicKey::from_slice(&initiator_pubkey).unwrap(),
-            timelock: 12,
+            timelock: 2,
         };
 
-        let address = get_htlc_address(&htlc_params, Network::Bitcoin).unwrap();
+        let address = get_htlc_address(&htlc_params, Network::Testnet4).unwrap();
         println!("HTLC address: {}", address);
     }
 }

@@ -92,7 +92,7 @@ export class HTLCService {
   /**
    * Update swap record when Redeemed event occurs
    */
-  async updateSwapRedeemed(orderID: string, txHash: string, blockNumber: number): Promise<boolean> {
+  async updateSwapRedeemed(orderID: string, txHash: string, blockNumber: number, secret: string): Promise<boolean> {
     try {
       // Find and update the order in MongoDB
       const result = await this.updateOrderSwapField(
@@ -100,7 +100,9 @@ export class HTLCService {
         'redeem_tx_hash', 
         txHash, 
         'redeem_block_number', 
-        blockNumber.toString()
+        blockNumber.toString(),
+        'secret',
+        secret.startsWith('0x') ? secret.slice(2) : secret
       );
       
       return result;
@@ -140,7 +142,9 @@ export class HTLCService {
     txHashField: string, 
     txHash: string, 
     blockNumberField: string, 
-    blockNumber: string
+    blockNumber: string,
+    secretField?: string,
+    secretValue?: string
   ): Promise<boolean> {
     try {
       if (!this.databaseService.isDatabaseConnected()) {
@@ -173,11 +177,19 @@ export class HTLCService {
         // Source swap matches - only update source
         update[`source_swap.${txHashField}`] = txHash;
         update[`source_swap.${blockNumberField}`] = blockNumber;
+        // Update secret field if provided
+        if (secretField && secretValue) {
+          update[`source_swap.${secretField}`] = secretValue;
+        }
         logger.debug(`[HTLC] Updating source swap for order ${order._id}`);
       } else if (order.destination_swap?.swap_id === normalizedOrderID) {
         // Destination swap matches - only update destination
         update[`destination_swap.${txHashField}`] = txHash;
         update[`destination_swap.${blockNumberField}`] = blockNumber;
+        // Update secret field if provided
+        if (secretField && secretValue) {
+          update[`destination_swap.${secretField}`] = secretValue;
+        }
         logger.debug(`[HTLC] Updating destination swap for order ${order._id}`);
       }
 

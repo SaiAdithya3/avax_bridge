@@ -45,6 +45,7 @@ export class DatabaseService {
         return err('Database not connected');
       }
 
+
       // Fetch orders where either source_swap or destination_swap needs action
       const pendingOrders = await this.ordersCollection.find({
         $or: [
@@ -57,7 +58,8 @@ export class DatabaseService {
           {
             'source_swap.initiate_tx_hash': { $ne: null},
             'destination_swap.initiate_tx_hash': { $ne: null },
-            'destination_swap.redeem_tx_hash': { $in: [null] }
+            'destination_swap.redeem_tx_hash': { $ne: [null] },
+            'source_swap.redeem_tx_hash': { $in: [null] }
           }
         ]
       }).toArray();
