@@ -1,5 +1,6 @@
 import { getContract, type WalletClient } from 'viem';
 import { getTransactionCount, waitForTransactionReceipt } from 'viem/actions';
+import { decodeErrorResult } from 'viem';
 import { err, ok } from 'neverthrow';
 import { WalletService } from './wallet';
 import { AsyncResult, Order, EvmChain } from '../types';
@@ -20,6 +21,46 @@ export class ContractService {
 
   private with0x(address: string): `0x${string}` {
     return address.startsWith('0x') ? address as `0x${string}` : `0x${address}`;
+  }
+
+  private decodeRevertData(data: string): string {
+    try {
+      // Try to decode the revert data using viem's decodeErrorResult
+      const decoded = decodeErrorResult({
+        abi: atomicSwapABI,
+        data: data as `0x${string}`,
+      });
+      return `${decoded.errorName}: ${decoded.args?.join(', ') || 'No arguments'}`;
+    } catch (decodeError) {
+      // If decoding fails, return the raw data
+      return `Raw revert data: ${data}`;
+    }
+  }
+
+  private async simulateTransaction(contract: any, functionName: string, args: any[], options: any): Promise<AsyncResult<void, string>> {
+    try {
+      // Simulate the transaction to get detailed error information
+      await contract.simulate[functionName](args, options);
+      return ok(undefined);
+    } catch (simulationError: any) {
+      console.error(`Simulation failed for ${functionName}:`);
+      console.error('Simulation error:', simulationError);
+      
+      // Try to extract detailed error information
+      let errorDetails = 'Simulation failed';
+      
+      if (simulationError.details) {
+        errorDetails = simulationError.details;
+      } else if (simulationError.reason) {
+        errorDetails = simulationError.reason;
+      } else if (simulationError.data) {
+        errorDetails = this.decodeRevertData(simulationError.data);
+      } else if (simulationError.message) {
+        errorDetails = simulationError.message;
+      }
+      
+      return err(`Simulation error: ${errorDetails}`);
+    }
   }
 
   private async getTokenAddress(asset: string): Promise<AsyncResult<string, string>> {
@@ -152,22 +193,71 @@ export class ContractService {
         client: this.getWallet(),
       });
 
-      const txHash = await atomicSwap.write.initiate([
-        this.with0x(order.destination_swap.secret_hash),
-        BigInt(order.destination_swap.timelock),
-        amount,
-        this.with0x(order.destination_swap.redeemer)
-      ], {
-        account: this.walletService.getAccount(),
-        chain: this.getWallet().chain,
-        value: amount,
-        nonce: nonce
-      });
+      try {
+        const txHash = await atomicSwap.write.initiate([
+          this.with0x(order.destination_swap.token_address),
+          this.with0x(order.destination_swap.redeemer),
+          BigInt(order.destination_swap.timelock),
+          amount,
+          this.with0x(order.destination_swap.secret_hash)
+        ], {
+          account: this.walletService.getAccount(),
+          chain: this.getWallet().chain,
+          nonce: nonce
+        });
 
-      // Wait for transaction to be mined
-      await waitForTransactionReceipt(this.getWallet(), { hash: txHash });
+        // Wait for transaction to be mined
+        await waitForTransactionReceipt(this.getWallet(), { hash: txHash });
 
-      return ok(txHash);
+        return ok(txHash);
+      } catch (contractError: any) {
+        // Enhanced error logging for contract reverts
+        console.error('Contract execution failed with details:');
+        console.error('Error name:', contractError.name);
+        console.error('Error message:', contractError.message);
+        console.error('Error code:', contractError.code);
+        
+        // Try to extract revert reason from different error formats
+        let revertReason = 'Unknown revert reason';
+        
+        if (contractError.details) {
+          console.error('Error details:', contractError.details);
+          revertReason = contractError.details;
+        } else if (contractError.reason) {
+          console.error('Error reason:', contractError.reason);
+          revertReason = contractError.reason;
+                 } else if (contractError.data) {
+           console.error('Error data:', contractError.data);
+           // Try to decode the revert data
+           revertReason = this.decodeRevertData(contractError.data);
+        } else if (contractError.message) {
+          // Try to extract revert reason from error message
+          const revertMatch = contractError.message.match(/revert(?:ed)?\s*:?\s*(.+)/i);
+          if (revertMatch) {
+            revertReason = revertMatch[1];
+          } else {
+            revertReason = contractError.message;
+          }
+        }
+        
+        console.error('Extracted revert reason:', revertReason);
+        
+        // Log the function call details for debugging
+        console.error('Function call details:');
+        console.error('Contract address:', htlcAddress);
+        console.error('Function: initiate');
+        console.error('Arguments:', {
+          secretHash: order.destination_swap.secret_hash,
+          timelock: order.destination_swap.timelock,
+          amount: amount.toString(),
+          redeemer: order.destination_swap.redeemer
+        });
+        console.error('Sender:', this.walletService.getAddress());
+        console.error('Value:', amount.toString());
+        console.error('Nonce:', nonce);
+        
+        return err(`Contract revert: ${revertReason}`);
+      }
     } catch (error) {
       return err(`Failed to initiate swap: ${String(error)}`);
     }
@@ -198,20 +288,89 @@ export class ContractService {
         client: this.getWallet(),
       });
 
-      const txHash = await atomicSwap.write.redeem([
-        order.create_order.create_id,
-        this.with0x(order.destination_swap.secret)
-      ], {
-        account: this.walletService.getAccount(),
-        chain: this.getWallet().chain,
-        value: BigInt(order.source_swap.amount),
-        nonce: nonce
-      });
+      // Simulate the transaction first to get detailed error information
+      const simulationResult = await this.simulateTransaction(
+        atomicSwap,
+        'redeem',
+        [
+          order.create_order.create_id,
+          this.with0x(order.destination_swap.secret)
+        ],
+        {
+          account: this.walletService.getAccount(),
+          chain: this.getWallet().chain,
+          value: BigInt(order.source_swap.amount),
+          nonce: nonce
+        }
+      );
 
-      // Wait for transaction to be mined
-      await waitForTransactionReceipt(this.getWallet(), { hash: txHash });
+      if (simulationResult.isErr()) {
+        return err(`Transaction simulation failed: ${simulationResult.error}`);
+      }
 
-      return ok(txHash);
+      console.log('Transaction simulation successful, proceeding with execution...');
+
+      try {
+        const txHash = await atomicSwap.write.redeem([
+          order.create_order.create_id,
+          this.with0x(order.destination_swap.secret)
+        ], {
+          account: this.walletService.getAccount(),
+          chain: this.getWallet().chain,
+          value: BigInt(order.source_swap.amount),
+          nonce: nonce
+        });
+
+        // Wait for transaction to be mined
+        await waitForTransactionReceipt(this.getWallet(), { hash: txHash });
+
+        return ok(txHash);
+      } catch (contractError: any) {
+        // Enhanced error logging for contract reverts
+        console.error('Contract execution failed with details:');
+        console.error('Error name:', contractError.name);
+        console.error('Error message:', contractError.message);
+        console.error('Error code:', contractError.code);
+        
+        // Try to extract revert reason from different error formats
+        let revertReason = 'Unknown revert reason';
+        
+        if (contractError.details) {
+          console.error('Error details:', contractError.details);
+          revertReason = contractError.details;
+        } else if (contractError.reason) {
+          console.error('Error reason:', contractError.reason);
+          revertReason = contractError.reason;
+        } else if (contractError.data) {
+          console.error('Error data:', contractError.data);
+          // Try to decode the revert data
+          revertReason = this.decodeRevertData(contractError.data);
+        } else if (contractError.message) {
+          // Try to extract revert reason from error message
+          const revertMatch = contractError.message.match(/revert(?:ed)?\s*:?\s*(.+)/i);
+          if (revertMatch) {
+            revertReason = revertMatch[1];
+          } else {
+            revertReason = contractError.message;
+          }
+        }
+        
+        console.error('Extracted revert reason:', revertReason);
+        
+        // Log the function call details for debugging
+        console.error('Function call details:');
+        console.error('Contract address:', this.with0x(order.source_swap.htlc_address));
+        console.error('Function: redeem');
+        console.error('Arguments:', {
+          orderId: order.create_order.create_id,
+          secret: order.destination_swap.secret
+        });
+        console.error('Sender:', this.walletService.getAddress());
+        console.error('Value:', order.source_swap.amount);
+        console.error('Nonce:', nonce);
+        
+        return err(`Contract revert: ${revertReason}`);
+      }
     } catch (error) {
       return err(`Failed to redeem swap: ${String(error)}`);
     }

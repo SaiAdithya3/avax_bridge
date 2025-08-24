@@ -33,12 +33,26 @@ export class OrderProcessor {
     }
 
     // Scenario 2: Both initiated but destination not redeemed
+    // Only try to redeem if the source chain is EVM (not Bitcoin)
     if (sourceInitiated && destinationInitiated && !destinationRedeemed) {
-      return {
-        order,
-        action: 'counterPartyRedeemed',
-        reason: 'Both swaps initiated, need to redeem destination swap'
-      };
+      // Check if source chain is EVM (not Bitcoin)
+      const isSourceEvm = source_swap.chain === 'avalanche_testnet' || source_swap.chain === 'arbitrum_sepolia';
+      
+      if (isSourceEvm) {
+        return {
+          order,
+          action: 'counterPartyRedeemed',
+          reason: 'Both swaps initiated, need to redeem destination swap (source is EVM)'
+        };
+      } else {
+        // Source is Bitcoin, so we can't redeem on Bitcoin side
+        // The order is effectively completed after destination initiation
+        return {
+          order,
+          action: 'completed',
+          reason: 'Both swaps initiated, source is Bitcoin - no EVM redemption needed'
+        };
+      }
     }
 
     // Scenario 3: Order is completed
