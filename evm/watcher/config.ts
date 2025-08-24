@@ -23,7 +23,7 @@ export const WATCHER_CONFIG = {
 export const chainConfig: Chain[] = [
   {
     id: 'arbitrum_sepolia',
-    startBlock: 186966790,
+    startBlock: 187026492,
     rpcUrl: process.env.ARBITRUM_SEPOLIA_RPC_URL || "https://arb-sepolia.g.alchemy.com/v2/GE3ckFWo2EhIEsrrYkc55",
     maxBlockSpan: 200,
     contracts: [

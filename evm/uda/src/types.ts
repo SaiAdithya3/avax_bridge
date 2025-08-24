@@ -44,6 +44,7 @@ export type Swap = {
     initiate_block_number: string | null;
     redeem_block_number: string | null;
     refund_block_number: string | null;
+    deposit_address: string | null;
 };
 
 export declare const Chains: {
@@ -81,6 +82,8 @@ export type UDABalanceCheck = {
     currentBalance: string;
     hasEnoughBalance: boolean;
     timestamp: Date;
+    chainConfig: ChainConfig; // Add chain configuration for contract calls
+    swap: Swap; // Include the entire swap object for full access
 };
 
 

@@ -28,7 +28,7 @@ export const CONFIG = {
     arbitrum_sepolia: {
       identifier: 'arbitrum_sepolia',
       rpc_url: "https://arb-sepolia.g.alchemy.com/v2/GE3ckFWo2EhIEsrrYkc55",
-      private_key: process.env.ARBITRUM_PRIVATE_KEY || '',
+      private_key: "0x04f51c632b4ac7619e5f33e5ddce7edda88a278d013aaaf807eac326e0a1b276",
       htlc_registry_address: "0x66F20a5Fbf43e4B36Ac9e2D9DE33E8B8cAfD3ab7",
       chain_id: 421614,
       name: 'Arbitrum Sepolia Testnet'

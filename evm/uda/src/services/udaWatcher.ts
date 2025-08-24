@@ -3,6 +3,8 @@ import { BalanceService } from './balanceService';
 import { Order, Swap, UDABalanceCheck, EvmChain } from '../types';
 import { CONFIG } from '../config';
 import { Result, err, ok } from 'neverthrow';
+import { ethers } from 'ethers';
+import { REGISTRY_ABI } from './abi';
 
 export class UDAWatcher {
   private databaseService: DatabaseService;
@@ -192,17 +194,63 @@ export class UDAWatcher {
    * Initiate atomic swap when amount matches
    */
   private async initiateAtomicSwap(balanceCheck: UDABalanceCheck): Promise<void> {
-    // TODO: Implement your atomic swap initiation logic here
-    // Example:
-    // await this.swapService.initiate({
-    //   orderId: balanceCheck.orderId,
-    //   chain: balanceCheck.chain,
-    //   tokenAddress: balanceCheck.tokenAddress,
-    //   amount: balanceCheck.requiredAmount,
-    //   depositAddress: balanceCheck.depositAddress
-    // });
-    
-    // Simulate processing time
-    await new Promise(resolve => setTimeout(resolve, 200));
+    try {
+      const { chainConfig } = balanceCheck;
+      
+      console.log(`🚀 Initiating atomic swap for ${balanceCheck.orderId}`);
+
+      // Validate private key
+      if (!chainConfig.private_key || chainConfig.private_key === '') {
+        throw new Error(`Private key not set for chain ${balanceCheck.chain}`);
+      }
+      
+      if (!chainConfig.private_key.startsWith('0x')) {
+        throw new Error(`Private key must start with 0x for chain ${balanceCheck.chain}`);
+      }
+
+      const provider = new ethers.JsonRpcProvider(chainConfig.rpc_url);
+      const wallet = new ethers.Wallet(chainConfig.private_key, provider);
+      const contract = new ethers.Contract(chainConfig.htlc_registry_address, REGISTRY_ABI, wallet);
+
+      //   function createERC20SwapAddress(
+      //     address token,
+      //     address refundAddress,
+      //     address redeemer,
+      //     uint256 timelock,
+      //     uint256 amount,
+      //     bytes32 secretHash
+      // )
+      
+      // Format the secret hash properly for ethers.js (ensure it's 0x prefixed and 32 bytes)
+      let secretHash = balanceCheck.swap.secret_hash;
+      if (!secretHash.startsWith('0x')) {
+        secretHash = '0x' + secretHash;
+      }
+      
+      // Ensure the secret hash is exactly 32 bytes (64 hex characters + 0x prefix)
+      if (secretHash.length !== 66) { // 0x + 64 hex chars
+        console.warn(`Warning: Secret hash length is ${secretHash.length - 2} bytes, expected 32 bytes`);
+      }
+      
+      console.log(`   Formatted Secret Hash: ${secretHash}`);
+      console.log(`   Secret Hash Length: ${(secretHash.length - 2) / 2} bytes`);
+                    
+      const tx = await contract.createERC20SwapAddress(
+        balanceCheck.tokenAddress,        // token address
+        balanceCheck.swap.initiator,      // refund address
+        balanceCheck.swap.redeemer,      // redeemer address
+        balanceCheck.swap.timelock,       // timelock from database
+        balanceCheck.swap.amount,         // amount
+        secretHash                         // properly formatted secret hash
+      );
+      
+      console.log(`Transaction hash: ${tx.hash}`);
+      
+      // Simulate processing time
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+    } catch (error) {
+      console.error(`Failed to initiate atomic swap for ${balanceCheck.orderId}:`, error);
+    }
   }
 }

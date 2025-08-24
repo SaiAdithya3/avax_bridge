@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 import { CONFIG } from '../config';
-import { EvmChain, Swap, UDABalanceCheck } from '../types';
+import { EvmChain, Swap, UDABalanceCheck, ChainConfig } from '../types';
 import { Result, err, ok } from 'neverthrow';
 
 // ERC20 ABI for balanceOf function
@@ -93,9 +93,13 @@ export class BalanceService {
         return err('Bitcoin chains not supported in UDA watcher');
       }
 
+      if (!swap.deposit_address) {
+        return err('Deposit address not found for swap');
+      }
+
       const chain = swap.chain as EvmChain;
       const tokenAddress = swap.token_address;
-      const depositAddress = swap.htlc_address;
+      const depositAddress = swap.deposit_address;
       const requiredAmount = swap.amount;
 
       // Check current balance
@@ -115,7 +119,9 @@ export class BalanceService {
         requiredAmount,
         currentBalance,
         hasEnoughBalance,
-        timestamp: new Date()
+        timestamp: new Date(),
+        chainConfig: CONFIG.chains[chain] as ChainConfig, // Include the chain configuration
+        swap: swap // Include the entire swap object
       };
 
       return ok(balanceCheck);
