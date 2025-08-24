@@ -56,6 +56,10 @@ where
     deserializer.deserialize_any(DateTimeVisitor)
 }
 
+fn default_has_deposit() -> bool {
+    false
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateOrder {
     #[serde(rename = "_id", skip_serializing)]
@@ -109,6 +113,7 @@ pub struct Swap {
     pub redeem_block_number: Option<String>,
     pub refund_block_number: Option<String>,
     pub deposit_address: Option<String>,
+    #[serde(default = "default_has_deposit")]
     pub has_deposit: bool
 }
 

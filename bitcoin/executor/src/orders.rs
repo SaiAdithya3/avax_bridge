@@ -78,8 +78,18 @@ impl Orderbook for OrderbookProvider {
             doc! {
                 "$project": {
                     "create_order_id": 1,
-                    "source_swap": { "$arrayElemAt": ["$source_swap", 0] },
-                    "destination_swap": { "$arrayElemAt": ["$destination_swap", 0] },
+                    "source_swap": {
+                        "$mergeObjects": [
+                            { "$arrayElemAt": ["$source_swap", 0] },
+                            { "has_deposit": { "$ifNull": [{ "$arrayElemAt": ["$source_swap.has_deposit", 0] }, false] } }
+                        ]
+                    },
+                    "destination_swap": {
+                        "$mergeObjects": [
+                            { "$arrayElemAt": ["$destination_swap", 0] },
+                            { "has_deposit": { "$ifNull": [{ "$arrayElemAt": ["$destination_swap.has_deposit", 0] }, false] } }
+                        ]
+                    },
                     "additional_data": { "$arrayElemAt": ["$create_order.additional_data", 0] }
                 }
             }
@@ -212,8 +222,18 @@ impl Orderbook for OrderbookProvider {
                     "$project": {
                         "_id": 1,
                         "created_at": 1,
-                        "source_swap": 1,
-                        "destination_swap": 1,
+                        "source_swap": {
+                            "$mergeObjects": [
+                                "$source_swap",
+                                { "has_deposit": { "$ifNull": ["$source_swap.has_deposit", false] } }
+                            ]
+                        },
+                        "destination_swap": {
+                            "$mergeObjects": [
+                                "$destination_swap",
+                                { "has_deposit": { "$ifNull": ["$destination_swap.has_deposit", false] } }
+                            ]
+                        },
                         "create_order": 1
                     }
                 },
