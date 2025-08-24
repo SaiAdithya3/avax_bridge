@@ -23,7 +23,7 @@ export const WATCHER_CONFIG = {
 export const chainConfig: Chain[] = [
   {
     id: 'arbitrum_sepolia',
-    startBlock: 187026492,
+    startBlock: 187034436,
     rpcUrl: process.env.ARBITRUM_SEPOLIA_RPC_URL || "https://arb-sepolia.g.alchemy.com/v2/GE3ckFWo2EhIEsrrYkc55",
     maxBlockSpan: 200,
     contracts: [
@@ -41,26 +41,26 @@ export const chainConfig: Chain[] = [
       // }
     ]
   },
-  // {
-  //   id: 'avalanche_testnet',
-  //   startBlock: 45131482    ,
-  //   rpcUrl: process.env.AVALANCHE_TESTNET_RPC_URL || "https://avax-fuji.g.alchemy.com/v2/GE3ckFWo2EhIEsrrYkc55",
-  //   maxBlockSpan: 1000,
-  //   contracts: [
-  //     // {
-  //     //   address: "0x419540C835D55aa023376970AbC82ce18a650f21", // USDC
-  //     //   type: "erc20"
-  //     // },
-  //     {
-  //       address: "0x6B1c656ad724C246049EF586Fa35D217A8db13A0", // Atomic Swap
-  //       type: "atomic_swap"
-  //     },
-  //     // {
-  //     //   address: "0x374158D863400c7Ab0491eA9a70c4Cf8615CEa50", // WBTC
-  //     //   type: "erc20"
-  //     // }
-  //   ]
-  // }
+  {
+    id: 'avalanche_testnet',
+    startBlock: 45154795    ,
+    rpcUrl: process.env.AVALANCHE_TESTNET_RPC_URL || "https://avax-fuji.g.alchemy.com/v2/GE3ckFWo2EhIEsrrYkc55",
+    maxBlockSpan: 1000,
+    contracts: [
+      // {
+      //   address: "0x419540C835D55aa023376970AbC82ce18a650f21", // USDC
+      //   type: "erc20"
+      // },
+      {
+        address: "0x6B1c656ad724C246049EF586Fa35D217A8db13A0", // Atomic Swap
+        type: "atomic_swap"
+      },
+      // {
+      //   address: "0x374158D863400c7Ab0491eA9a70c4Cf8615CEa50", // WBTC
+      //   type: "erc20"
+      // }
+    ]
+  }
 ];
 
 // Function to add a contract to a specific chain
