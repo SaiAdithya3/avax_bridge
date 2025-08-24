@@ -4,6 +4,7 @@ import { useOrdersStore } from "../store/ordersStore";
 import {
   fetchUserOrders,
   filterPendingOrders,
+  generateSecret,
   parseAction,
 } from "../services/orderService";
 import { useBitcoinWallet } from "@gardenfi/wallet-connectors";
@@ -81,14 +82,15 @@ export const PendingOrdersManager: React.FC = () => {
         
         const bitcoinProvider = new BitcoinProvider(
             BitcoinNetwork.Testnet,
-            'https://48.217.250.147:18443',
+            'https://mempool.space/testnet4/api'
           );
           const btcWallet = BitcoinWallet.fromPrivateKey(
             'af530c3d2212740a8428193fce82bfddcf7e83bee29a2b9b2f25b5331bae1bf5',
             bitcoinProvider,
             { pkType: 'p2wpkh', pkPath: "m/84'/0'/0'/0/0" },
           );
-        const redeemResult = await bitcoinRedeem(btcWallet, order, order.create_order?.secret_hash || '');
+          const { secret } = await generateSecret(order.create_order.nonce);
+        const redeemResult = await bitcoinRedeem(btcWallet, order, secret);
         if (redeemResult) {
           console.log("Bitcoin redemption successful:", redeemResult);
           return {
@@ -309,18 +311,19 @@ export const PendingOrdersManager: React.FC = () => {
     if (!fillerInitTx) {
       throw new Error('Failed to get initiate_tx_hash');
     }
-
+    console.log("fillerInitTx", fillerInitTx);
+    console.log(order.destination_swap.secret_hash)
     // Construct the GardenHTLC executor
     const bitcoinExecutor = await GardenHTLC.from(
       wallet,
       Number(order.destination_swap.amount),
-      order.create_order?.secret_hash || '',
+      order.destination_swap.secret_hash,
       toXOnly(order.destination_swap.initiator),
       toXOnly(order.destination_swap.redeemer),
       order.destination_swap.timelock,
       [fillerInitTx]
     );
-
+    console.log("secret", secret)
     // Get the redeem transaction hex
     const redeemHex = await bitcoinExecutor.getRedeemHex(
       trim0x(secret),

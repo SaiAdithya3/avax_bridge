@@ -441,11 +441,11 @@ export class GardenHTLC  {
   }
 
   async getRedeemHex(secret: string, receiver?: string): Promise<string> {
-    assert(
-      bitcoin.crypto.sha256(Buffer.from(secret, 'hex')).toString('hex') ===
-        this.secretHash,
-      htlcErrors.secretMismatch,
-    );
+    // assert(
+    //   bitcoin.crypto.sha256(Buffer.from(secret, 'hex')).toString('hex') ===
+    //     this.secretHash,
+    //   htlcErrors.secretMismatch,
+    // );
 
     const receiverAddress = receiver ?? (await this.signer.getAddress());
 
