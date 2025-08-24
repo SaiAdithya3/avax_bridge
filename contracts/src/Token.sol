@@ -10,19 +10,31 @@ contract Token is ERC20 {
 }
 
 contract USDC is ERC20 {
-    constructor() ERC20("USDC", "USDC") {
+    constructor() ERC20("USDC", "USDC-6") {
         _mint(0x1B150538E943F00127929f7eeB65754f7beB0B6d, 100000000 * 10 ** decimals());
+    }
+
+    function decimals() public view virtual override returns (uint8) {
+        return 6;
     }
 }
 
 contract WrappedBitcoin is ERC20 {
-    constructor() ERC20("Wrapped Bitcoin", "WBTC") {
+    constructor() ERC20("Wrapped Bitcoin", "WBTC-8") {
         _mint(0x1B150538E943F00127929f7eeB65754f7beB0B6d, 100000000 * 10 ** decimals());
+    }
+
+    function decimals() public view virtual override returns (uint8) {
+        return 8;
     }
 }
 
 contract WrappedAVAX is ERC20 {
-    constructor() ERC20("Wrapped AVAX", "WAVAX") {
+    constructor() ERC20("Wrapped AVAX", "WAVAX-18") {
         _mint(0x1B150538E943F00127929f7eeB65754f7beB0B6d, 100000000 * 10 ** decimals());
+    }
+
+    function decimals() public view virtual override returns (uint8) {
+        return 18;
     }
 }
