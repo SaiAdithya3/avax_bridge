@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ArrowLeft, AlertCircle } from 'lucide-react';
 import { useEVMWallet } from '../hooks/useEVMWallet';
@@ -17,7 +17,7 @@ interface OrderDetailsModalProps {
   onBack: () => void;
 }
 
-const POLL_INTERVAL = 5000; // 5 seconds
+const POLL_INTERVAL = 2000; // 2 seconds
 
 const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ orderId, isOpen, onClose, onBack }) => {
   const { address: evmAddress, walletClient } = useEVMWallet();
@@ -29,115 +29,113 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ orderId, isOpen, 
   const { provider } = useBitcoinWallet();
   const [initiationHash, setInitiationHash] = useState<string | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const isMountedRef = useRef<boolean>(false);
 
-  // Determine current step based on order status
-  const getCurrentStep = (): 'awaiting_deposit' | 'deposit_detected' | 'deposit_confirmed' | 'redeeming' | 'completed' => {
-    if (!order) return 'awaiting_deposit';
-    
-    const status = parseAction(order);
-    
-    switch (status) {
-      case 'completed':
-        return 'completed';
-      case 'redeeming':
-        return 'redeeming';
-      case 'deposit_confirmed':
-        return 'deposit_confirmed';
-      case 'deposit_detected':
-        return 'deposit_detected';
-      default:
-        return 'awaiting_deposit';
-    }
-  };
+  // Cleanly fetch and update order, status, QR, and hash
+  const fetchAndUpdateOrder = useCallback(
+    async (showLoading = false) => {
+      if (!orderId) return;
+      if (showLoading) setIsLoading(true);
 
-  const fetchOrder = async (showLoading = true) => {
-    if (!orderId) return;
-    if (showLoading) setIsLoading(true);
-    
-    try {
-      const response = await fetch(`${API_URLS.ORDERBOOK}/orders/id/${orderId}`);
-      if (response.ok) {
+      try {
+        const response = await fetch(`${API_URLS.ORDERBOOK}/orders/id/${orderId}`);
+        if (!response.ok) {
+          setError('Failed to fetch order details');
+          setOrder(null);
+          setQrCodeUrl('');
+          setInitiationHash(null);
+          return;
+        }
         const data = await response.json();
+        if (!isMountedRef.current) return;
+
         setOrder(data.result);
 
-        if (data?.result?.source_swap?.initiate_tx_hash) {
-          setInitiationHash(data.result.source_swap.initiate_tx_hash);
-          setQrCodeUrl('');
-        } else {
-          if (data?.result?.source_swap?.deposit_address) {
-            const qrCode = await QRCode.toDataURL(data.result.source_swap.deposit_address);
-            setQrCodeUrl(qrCode);
-          }
-        }
-      } else {
-        setError('Failed to fetch order details');
-      }
-    } catch (err) {
-      setError('Failed to fetch order details');
-      console.error('Error fetching order:', err);
-    } finally {
-      if (showLoading) setIsLoading(false);
-    }
-  };
+        // Update initiation hash and QR code
+        const txHash = data?.result?.source_swap?.initiate_tx_hash;
+        const depositAddress = data?.result?.source_swap?.deposit_address;
 
+        if (txHash) {
+          setInitiationHash(txHash);
+          setQrCodeUrl('');
+        } else if (depositAddress) {
+          try {
+            const qrCode = await QRCode.toDataURL(depositAddress);
+            setQrCodeUrl(qrCode);
+          } catch (qrErr) {
+            setQrCodeUrl('');
+          }
+        } else {
+          setQrCodeUrl('');
+        }
+      } catch (err) {
+        setError('Failed to fetch order details');
+        setOrder(null);
+        setQrCodeUrl('');
+        setInitiationHash(null);
+        console.error('Error fetching order:', err);
+      } finally {
+        if (showLoading) setIsLoading(false);
+      }
+    },
+    [orderId]
+  );
+
+  // Polling logic
   useEffect(() => {
-    if (orderId && isOpen) {
-      let isMounted = true;
-      
-      // Reset state when opening with a new order
+    isMountedRef.current = true;
+
+    if (!orderId || !isOpen) {
       setOrder(null);
       setQrCodeUrl('');
       setInitiationHash(null);
       setError(null);
-      setIsLoading(true);
+      setIsLoading(false);
       setIsInitiating(false);
-      
-      fetchOrder();
-
-      // Polling for order status
-      pollingRef.current = setInterval(async () => {
-        try {
-          const response = await fetch(`${API_URLS.ORDERBOOK}/orders/id/${orderId}`);
-          if (response.ok) {
-            const data = await response.json();
-            if (!isMounted) return;
-            setOrder(data.result);
-
-            if (data?.result?.source_swap?.initiate_tx_hash) {
-              setInitiationHash(data.result.source_swap.initiate_tx_hash);
-              setQrCodeUrl('');
-              // Stop polling if completed
-              if (pollingRef.current) {
-                clearInterval(pollingRef.current);
-                pollingRef.current = null;
-              }
-            } else {
-              if (data?.result?.source_swap?.deposit_address) {
-                const qrCode = await QRCode.toDataURL(data.result.source_swap.deposit_address);
-                setQrCodeUrl(qrCode);
-              }
-            }
-          }
-        } catch (err) {
-          // Optionally handle polling errors
-        }
-      }, POLL_INTERVAL);
-
-      return () => {
-        isMounted = false;
-        if (pollingRef.current) {
-          clearInterval(pollingRef.current);
-          pollingRef.current = null;
-        }
-      };
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+      return;
     }
-  }, [orderId, isOpen]);
+
+    // Reset state for new order
+    setOrder(null);
+    setQrCodeUrl('');
+    setInitiationHash(null);
+    setError(null);
+    setIsLoading(true);
+    setIsInitiating(false);
+
+    // Initial fetch
+    fetchAndUpdateOrder(true);
+
+         // Start polling
+     if (pollingRef.current) {
+       clearInterval(pollingRef.current);
+       pollingRef.current = null;
+     }
+     pollingRef.current = setInterval(() => {
+       fetchAndUpdateOrder(false);
+     }, POLL_INTERVAL);
+
+    return () => {
+      isMountedRef.current = false;
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [orderId, isOpen, fetchAndUpdateOrder]);
+
+
+  
 
   const handleInit = async () => {
     if (!order || !walletClient || !evmAddress) return;
     setIsInitiating(true);
     setError(null);
-    
+
     if (isEVMChain(order.source_swap.chain)) {
       await handleInitiateUDA();
     } else {
@@ -149,12 +147,12 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ orderId, isOpen, 
     if (!order || !provider || !order.source_swap.deposit_address) return;
     setIsInitiating(true);
     setError(null);
-    
+
     const bitcoinRes = await provider.sendBitcoin(
       order.source_swap.deposit_address,
       Number(order.source_swap.amount)
     );
-    
+
     if (bitcoinRes.ok) {
       setInitiationHash(bitcoinRes.val);
     } else {
@@ -189,8 +187,6 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ orderId, isOpen, 
     }
   };
 
-
-
   if (!orderId) return null;
 
   return (
@@ -205,7 +201,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ orderId, isOpen, 
             className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
             onClick={onClose}
           />
-          
+
           {/* Modal */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -276,10 +272,10 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ orderId, isOpen, 
                   <div className="space-y-6">
                     {/* Swap Progress */}
                     <SwapProgress
-                        order={{
-                          ...order,
-                          status: parseAction(order)
-                        }}
+                      order={{
+                        ...order,
+                        status: parseAction(order)
+                      }}
                       initiationHash={initiationHash}
                       qrCodeUrl={qrCodeUrl}
                       onInitiate={handleInit}

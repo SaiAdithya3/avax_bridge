@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useEVMWallet } from '../hooks/useEVMWallet';
 import { initiateViaUDA } from '../services/contractService';
 import { API_URLS } from '../constants/constants';
@@ -14,85 +14,78 @@ interface OrderDetailsProps {
   onBack: () => void;
 }
 
-const POLL_INTERVAL = 5000; // 5 seconds
+const POLL_INTERVAL = 2000; // 5 seconds
 
 const OrderDetails: React.FC<OrderDetailsProps> = ({ orderId, onBack }) => {
   const { address: evmAddress, walletClient } = useEVMWallet();
-  const [order, setOrder] = useState<Order & {status: OrderStatus} | null>(null);
+  const [order, setOrder] = useState<Order & { status: OrderStatus } | null>(null);
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [isInitiating, setIsInitiating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const {provider} = useBitcoinWallet();
+  const { provider } = useBitcoinWallet();
   const [initiationHash, setInitiationHash] = useState<string | null>(null);
   const [isCompleted, setIsCompleted] = useState(false);
   const { setShowHero } = useAssetsStore();
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
-  const fetchOrder = async (showLoading = true) => {
-    if (showLoading) setIsLoading(true);
-    try {
-      const response = await fetch(`${API_URLS.ORDERBOOK}/orders/id/${orderId}`);
-      if (response.ok) {
+  // Helper to fetch and update order state, progress, and QR code
+  const fetchAndUpdateOrder = useCallback(
+    async (showLoading = false) => {
+      if (showLoading) setIsLoading(true);
+      try {
+        const response = await fetch(`${API_URLS.ORDERBOOK}/orders/id/${orderId}`);
+        if (!response.ok) {
+          setError('Failed to fetch order details');
+          if (showLoading) setIsLoading(false);
+          return;
+        }
         const data = await response.json();
-        setOrder(data.result);
+        const orderData = data.result;
+        setOrder(orderData);
 
-        if (data?.source_swap?.initiate_tx_hash) {
-          setIsCompleted(false);
-          setInitiationHash(data.source_swap.initiate_tx_hash);
+        // Check for initiation hash and update progress
+        const initiateTxHash = orderData?.source_swap?.initiate_tx_hash;
+        if (initiateTxHash) {
+          setIsCompleted(true);
+          setInitiationHash(initiateTxHash);
           setQrCodeUrl('');
         } else {
           setIsCompleted(false);
-          if (data?.source_swap?.deposit_address) {
-            const qrCode = await QRCode.toDataURL(data.source_swap.deposit_address);
-            console.log("qrCode", qrCode)
+          setInitiationHash(null);
+          if (orderData?.source_swap?.deposit_address) {
+            const qrCode = await QRCode.toDataURL(orderData.source_swap.deposit_address);
             setQrCodeUrl(qrCode);
-          }
-        }
-      } else {
-        setError('Failed to fetch order details');
-      }
-    } catch (err) {
-      setError('Failed to fetch order details');
-      console.error('Error fetching order:', err);
-    } finally {
-      if (showLoading) setIsLoading(false);
-    }
-  };
-  useEffect(() => {
-    let isMounted = true;
-    fetchOrder();
-    setShowHero(false);
-
-    // Polling for order status
-    pollingRef.current = setInterval(async () => {
-      try {
-        const response = await fetch(`${API_URLS.ORDERBOOK}/orders/id/${orderId}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (!isMounted) return;
-          setOrder(data.result);
-
-          if (data?.result.source_swap?.initiate_tx_hash) {
-            setIsCompleted(true);
-            setInitiationHash(data.result.source_swap.initiate_tx_hash);
-            setQrCodeUrl('');
-            // Stop polling if completed
-            if (pollingRef.current) {
-              clearInterval(pollingRef.current);
-              pollingRef.current = null;
-            }
           } else {
-            setIsCompleted(false);
-            if (data?.result?.source_swap?.deposit_address) {
-              const qrCode = await QRCode.toDataURL(data.result.source_swap.deposit_address);
-              setQrCodeUrl(qrCode);
-            }
+            setQrCodeUrl('');
           }
         }
       } catch (err) {
-        // Optionally handle polling errors
+        setError('Failed to fetch order details');
+        console.error('Error fetching order:', err);
+      } finally {
+        if (showLoading) setIsLoading(false);
       }
+    },
+    [orderId]
+  );
+
+  // Initial fetch and polling setup
+  useEffect(() => {
+    let isMounted = true;
+    setShowHero(false);
+
+    // Initial fetch
+    fetchAndUpdateOrder(true);
+
+    // Polling for order status/progress
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+    pollingRef.current = setInterval(async () => {
+      if (!isMounted) return;
+      await fetchAndUpdateOrder(false);
     }, POLL_INTERVAL);
 
     return () => {
@@ -102,46 +95,56 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ orderId, onBack }) => {
         pollingRef.current = null;
       }
     };
-  }, [orderId]);
+  }, [orderId, fetchAndUpdateOrder, setShowHero]);
 
+  // Stop polling if completed
+  useEffect(() => {
+    if (isCompleted && pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  }, [isCompleted]);
+
+  // Handle user-initiated swap
   const handleInit = async () => {
     if (!order || !walletClient || !evmAddress) return;
     setIsInitiating(true);
     setError(null);
-    if(isEVMChain(order.source_swap.chain)){
-      await handleInitiateUDA();
-    }else{
-      await handleBitcoinInit();
+    try {
+      if (isEVMChain(order.source_swap.chain)) {
+        await handleInitiateUDA();
+      } else {
+        await handleBitcoinInit();
+      }
+      // After initiation, immediately refetch to update progress
+      await fetchAndUpdateOrder(true);
+    } finally {
+      setIsInitiating(false);
     }
-  }
+  };
 
   const handleBitcoinInit = async () => {
     if (!order || !provider || !order.source_swap.deposit_address) return;
     setIsInitiating(true);
     setError(null);
     const bitcoinRes = await provider.sendBitcoin(
-        order.source_swap.deposit_address,
-        Number(order.source_swap.amount)
-      );
-    if(bitcoinRes.ok){
+      order.source_swap.deposit_address,
+      Number(order.source_swap.amount)
+    );
+    if (bitcoinRes.ok) {
       setInitiationHash(bitcoinRes.val);
-    }else{
+      setIsCompleted(false);
+    } else {
       setError(bitcoinRes.error);
     }
-  }
+  };
 
   const handleInitiateUDA = async () => {
     if (!order || !walletClient || !evmAddress) return;
-
     setIsInitiating(true);
     setError(null);
 
     try {
-      console.log('Order for UDA:', order);
-      console.log('Source swap chain:', order.source_swap?.chain);
-      console.log('Deposit address:', order.source_swap?.deposit_address);
-      console.log('Amount:', order.source_swap?.amount);
-
       // Validate order structure
       if (!order.source_swap?.chain || !order.source_swap?.deposit_address || !order.source_swap?.amount) {
         setError('Invalid order structure');
@@ -151,17 +154,16 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ orderId, onBack }) => {
       const hash = await initiateViaUDA(walletClient, order);
       if (hash.ok) {
         setInitiationHash(hash.val);
+        setIsCompleted(false);
       } else {
         setError(hash.error);
       }
     } catch (err) {
       setError('Failed to initiate UDA transaction');
       console.error('UDA initiation error:', err);
-    } finally {
-      setIsInitiating(false);
     }
   };
-  
+
   if (isLoading) {
     return (
       <div className="max-w-xl mx-auto p-6">
@@ -198,7 +200,6 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ orderId, onBack }) => {
       </div>
     );
   }
-
 
   return (
     <div className="max-w-4xl mx-auto p-6">

@@ -8,6 +8,7 @@ import { DigestKey } from '../utils/digestKey';
 import type { AssetOption } from '../store/assetsStore';
 import axios from 'axios';
 import { evmRedeem } from './contractService';
+import { BitcoinNetwork, BitcoinProvider, BitcoinWallet, toXOnly } from '@gardenfi/core';
 
 /**
  * You must pass in all required data to these service functions.
@@ -97,89 +98,6 @@ export const filterPendingOrders = (orders: Order[]): Order[] => {
 };
 
 /**
- * Execute redemption for a single order
- * Determines whether to call evmRedeem or bitcoinRedeem based on the destination chain
- */
-export const executeOrderRedemption = async (order: Order, walletClient: WalletClient): Promise<{ success: boolean; message: string; txHash?: string }> => {
-    try {
-        const { destination_swap } = order;
-
-        // Check if destination swap is EVM-based
-        if (isEVMChain(destination_swap.chain)) {
-            const redeemResult = await evmRedeem(walletClient, order);
-            
-            if (redeemResult.ok) {
-                return {
-                    success: true,
-                    message: 'EVM redeem successful',
-                    txHash: redeemResult.val
-                };
-            } else {
-                return {
-                    success: false,
-                    message: `EVM redeem failed: ${redeemResult.error}`
-                };
-            }
-        } else if (isBitcoinChain(destination_swap.chain)) {
-            // TODO: Implement bitcoinRedeem function
-            return {
-                success: false,
-                message: 'Bitcoin redeem not yet implemented'
-            };
-        } else {
-            return {
-                success: false,
-                message: `Unsupported destination chain: ${destination_swap.chain}`
-            };
-        }
-    } catch (error) {
-        return {
-            success: false,
-            message: `Error processing order: ${String(error)}`
-        };
-    }
-};
-
-/**
- * Execute redemption for multiple pending orders
- */
-export const executePendingOrdersRedemption = async (orders: Order[], walletClient: WalletClient): Promise<{ success: boolean; message: string; processedCount: number; results: Array<{ orderId: string; success: boolean; message: string; txHash?: string }> }> => {
-    const results: Array<{ orderId: string; success: boolean; message: string; txHash?: string }> = [];
-    let processedCount = 0;
-
-    for (const order of orders) {
-        try {
-            const result = await executeOrderRedemption(order, walletClient);
-            results.push({
-                orderId: order.create_order.create_id,
-                ...result
-            });
-            
-            if (result.success) {
-                processedCount++;
-            }
-        } catch (error) {
-            results.push({
-                orderId: order.create_order.create_id,
-                success: false,
-                message: String(error)
-            });
-        }
-    }
-
-    const message = processedCount > 0 
-        ? `Successfully processed ${processedCount} orders`
-        : 'No orders processed successfully';
-
-    return {
-        success: processedCount > 0,
-        message,
-        processedCount,
-        results
-    };
-};
-
-/**
  * Build the order request.
  * All required data must be passed in from the component.
  */
@@ -205,17 +123,28 @@ export const buildCreateOrderRequest = async ({
     let initiator_destination_address: string | undefined = undefined;
     let bitcoin_optional_recipient: string | undefined = undefined;
 
+    const bitcoinProvider = new BitcoinProvider(
+        BitcoinNetwork.Testnet,
+        'https://48.217.250.147:18443',
+      );
+      const btcWallet = BitcoinWallet.fromPrivateKey(
+        'af530c3d2212740a8428193fce82bfddcf7e83bee29a2b9b2f25b5331bae1bf5',
+        bitcoinProvider,
+        { pkType: 'p2wpkh', pkPath: "m/84'/0'/0'/0/0" },
+      );
+      const pubKey = await btcWallet.getPublicKey();
+      const pubKeyXOnly  = toXOnly(pubKey)
     // Set initiator_source_address based on fromChain
     if (isEVMChain(fromAsset.chainId)) {
         initiator_source_address = evmAddress;
     } else if (isBitcoinChain(fromAsset.chainId)) {
-        initiator_source_address = 'b3775c0b7fac3f54098d9aaa401bf3f0a1c6ca9f49205060c987d3b51d9ce2e8';
+        initiator_source_address = pubKeyXOnly
     }
     // Set initiator_destination_address based on toChain
     if (isEVMChain(toAsset.chainId)) {
         initiator_destination_address = evmAddress;
     } else if (isBitcoinChain(toAsset.chainId)) {
-        initiator_destination_address = 'b3775c0b7fac3f54098d9aaa401bf3f0a1c6ca9f49205060c987d3b51d9ce2e8';
+        initiator_destination_address = pubKeyXOnly
     }
     if ((isBitcoinChain(fromAsset.chainId) && !isBitcoinChain(toAsset.chainId)) || (isBitcoinChain(toAsset.chainId) && !isBitcoinChain(fromAsset.chainId))) {
         bitcoin_optional_recipient = btcAddress;

@@ -268,21 +268,6 @@ const SwapProgress: React.FC<SwapProgressProps> = ({
             animate={{ opacity: 1, y: 0 }}
             className="space-y-6"
         >
-            {/* Progress Header */}
-            <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.1 }}
-                className="flex items-center gap-3"
-            >
-                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                    <Clock className="w-5 h-5 text-blue-600" />
-                </div>
-                <div>
-                    <h3 className="text-xl font-semibold text-gray-900">Swap Progress</h3>
-                    <p className="text-gray-500">Track your swap status</p>
-                </div>
-            </motion.div>
 
             {/* Progress Steps */}
             <div className="space-y-4">

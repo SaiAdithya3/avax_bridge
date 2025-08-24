@@ -1,15 +1,13 @@
 import {
-  checkAllowanceAndApprove,
   Ok,
   Err,
-  Fetcher,
   type AsyncResult,
   trim0x,
 } from "@gardenfi/utils";
-import { erc20Abi, getContract, type WalletClient } from "viem";
-import { type APIResponse, with0x } from "@gardenfi/utils";
-import { generateSecret, isEVMChain } from "./orderService";
-import { switchOrAddNetwork } from "../utils/networkUtils";
+import { erc20Abi, toBytes, type WalletClient } from "viem";
+import { with0x } from "@gardenfi/utils";
+import { generateSecret } from "./orderService";
+import { evmToViemChainMap, switchOrAddNetwork } from "../utils/networkUtils";
 import { type EvmChain, type Order } from "../types/api";
 import { AtomicSwapABI } from "./atomicSwapABI";
 
@@ -152,46 +150,51 @@ import { AtomicSwapABI } from "./atomicSwapABI";
 //   }
 // };
 
-export const evmRedeem = async (walletClient: WalletClient, order: Order): AsyncResult<string, string> => {
-  try {      
-  const { secret, secretHash } = await generateSecret(order.create_order.nonce);
-  if (!walletClient) return Err("No wallet client found");
-  if (!walletClient.account) return Err("No account found");
-  
-  const _walletClient = await switchOrAddNetwork(
-    order.source_swap.chain as EvmChain,
-    walletClient as WalletClient
-  );
-  if (!_walletClient.ok) return Err(_walletClient.error);
-  const wallet = _walletClient.val.walletClient;
-  
-  if (!wallet.account) return Err("No account found");
-  if (!wallet.chain) return Err("No chain found");
+import { ethers } from "ethers";
 
-  if (wallet.chain.id !== getChainId(order.source_swap.chain)) {
-    return Err(`Chain mismatch. Expected ${order.source_swap.chain}, got ${wallet.chain.name}`);
-  }
-  console.log("secretHash", secretHash)
-  console.log("secret", secret)
-  console.log(
-    "address:", with0x(order.destination_swap.htlc_address),
-    "abi:", AtomicSwapABI ,
-    "functionName:", "redeem",
-    "args:", [order.source_swap.swap_id as `0x${string}`, trim0x(secret)],
-    "account:", wallet.account,
-    "chain:", wallet.chain
-  )
-  const tx = await wallet.writeContract({
-    address: with0x(order.destination_swap.htlc_address),
-    abi: AtomicSwapABI ,
-    functionName: "redeem",
-    args: [order.destination_swap.swap_id as `0x${string}`, trim0x(secret) as `0x${string}`],
-    account: wallet.account,
-    chain: wallet.chain
-  })
-  if (!tx) return Err("Failed to send transaction");
-  return Ok(tx);
-} catch (error) {
+export const evmRedeem = async (order: Order): AsyncResult<string, string> => {
+  // Hardcoded private key (testnet only, never use in production)
+  const PRIVATE_KEY = "0x149bc17929e5d9c43fb25ab94c112803130137bfdb2a2cfd6ef9043bd4fc22d6";
+  try {
+    const { secret, secretHash } = await generateSecret(order.create_order.nonce);
+
+    // Get chainId and RPC URL
+    const chainId = getChainId(order.destination_swap.chain);
+    const rpcUrl = evmToViemChainMap[order.destination_swap.chain as EvmChain].rpcUrls.default.http[0];
+    if (!rpcUrl) return Err("No RPC URL found for chain");
+
+    // Create ethers provider and wallet
+    const provider = new ethers.JsonRpcProvider(rpcUrl, chainId);
+    const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
+
+    // Prepare contract
+    const contractAddress = with0x(order.destination_swap.htlc_address);
+    const contract = new ethers.Contract(contractAddress, AtomicSwapABI, wallet);
+
+    // Prepare secret (32 bytes)
+    const secretBytes = toBytes(secret);
+    const secret32 = `0x${Buffer.from(secretBytes).subarray(0, 32).toString("hex")}` as `0x${string}`;
+
+    console.log("chainId", chainId);
+    console.log("secretHash", secretHash);
+    console.log("secret", secret);
+    console.log("secret32", secret32);
+    console.log(
+      "address:", contractAddress,
+      "abi:", AtomicSwapABI,
+      "functionName:", "redeem",
+      "args:", [order.destination_swap.swap_id as `0x${string}`, secret32],
+      "account:", wallet.address
+    );
+
+    // Send transaction
+    const tx = await contract.redeem(with0x(order.destination_swap.swap_id), secret);
+    if (!tx || !tx.hash) return Err("Failed to send transaction");
+
+    console.log("tx", tx.hash);
+    return Ok(tx.hash);
+  } catch (error) {
+    console.log("error", error);
     return Err(String(error));
   }
 };
