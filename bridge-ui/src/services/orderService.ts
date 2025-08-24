@@ -1,5 +1,5 @@
 import { API_URLS } from '../constants/constants';
-import type { CreateOrderRequest, CreateOrderResponse } from '../types/api';
+import type { CreateOrderRequest, CreateOrderResponse, Order } from '../types/api';
 import { Err, Ok, trim0x, with0x } from '@gardenfi/utils';
 import { sha256 } from 'viem';
 import { ECPairFactory } from 'ecpair';
@@ -180,36 +180,17 @@ export type OrderStatus =
   | 'counterPartyRedeemed'
   | 'completed';
 
-export type UserOrder = {
-  id: string;
-  status: OrderStatus;
-  createdAt: string;
-  sourceAsset: string;
-  destinationAsset: string;
-  sourceAmount: string;
-  destinationAmount: string;
-  sourceChain: string;
-  destinationChain: string;
-  sourceAddress: string;
-  destinationAddress: string;
-  sourceTxHash?: string;
-  destinationTxHash?: string;
-  secretHash: string;
-  timelock: number;
-  // Additional fields from the API response
-  order: any; // Full order object from API
-};
 
 // Fetch user orders with polling
 export const fetchUserOrders = async (
   userAddress: string,
   pollInterval: number = 5000,
   maxPolls: number = 12
-): Promise<UserOrder[]> => {
-  const orders: UserOrder[] = [];
+): Promise<(Order & {status: OrderStatus})[]> => {
+  const orders: (Order & {status: OrderStatus})[] = [];
   let pollCount = 0;
 
-  const poll = async (): Promise<UserOrder[]> => {
+  const poll = async (): Promise<(Order & {status: OrderStatus})[]> => {
     try {
       const response = await axios.get(`${API_URLS.ORDERBOOK}/orders/user/${userAddress}`);
       
@@ -235,22 +216,8 @@ export const fetchUserOrders = async (
           }
 
           return {
-            id: order.create_order?.create_id || order.source_swap?.swap_id || '',
-            status,
-            createdAt: order.created_at || new Date().toISOString(),
-            sourceAsset: order.source_swap?.asset || '',
-            destinationAsset: order.destination_swap?.asset || '',
-            sourceAmount: order.source_swap?.amount || '0',
-            destinationAmount: order.destination_swap?.amount || '0',
-            sourceChain: order.source_swap?.chain || '',
-            destinationChain: order.destination_swap?.chain || '',
-            sourceAddress: order.source_swap?.initiator || '',
-            destinationAddress: order.destination_swap?.initiator || '',
-            sourceTxHash: order.source_swap?.initiate_tx_hash || undefined,
-            destinationTxHash: order.destination_swap?.initiate_tx_hash || undefined,
-            secretHash: order.create_order?.secret_hash || '',
-            timelock: order.source_swap?.timelock || 0,
-            order, // Keep the full order object for reference
+            ...order, 
+            status
           };
         });
       }
@@ -277,7 +244,7 @@ export const fetchUserOrders = async (
     
     // Update existing orders and add new ones
     newOrders.forEach(newOrder => {
-      const existingIndex = orders.findIndex(order => order.id === newOrder.id);
+      const existingIndex = orders.findIndex(order => order.create_order.create_id === newOrder.create_order.create_id);
       if (existingIndex >= 0) {
         orders[existingIndex] = newOrder;
       } else {
@@ -293,7 +260,7 @@ export const fetchUserOrders = async (
 };
 
 // Get filtered orders by status
-export const getFilteredOrders = (orders: UserOrder[], statusFilter: OrderStatus | 'all'): UserOrder[] => {
+export const getFilteredOrders = (orders: (Order & {status: OrderStatus})[], statusFilter: OrderStatus | 'all'): (Order & {status: OrderStatus})[] => {
   if (statusFilter === 'all') {
     return orders;
   }

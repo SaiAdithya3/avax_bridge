@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEVMWallet } from '../hooks/useEVMWallet';
-import { getFilteredOrders, getOrderStatusInfo, type UserOrder, type OrderStatus } from '../services/orderService';
+import { getFilteredOrders, getOrderStatusInfo, type OrderStatus } from '../services/orderService';
 import { useOrdersStore } from '../store/ordersStore';
 import { API_URLS } from '../constants/constants';
 import OrderDetails from './OrderDetails';
-// Asset and chain logo URLs (not JSX)
+import type { Order } from '../types/api';
+import { useAssetsStore } from '../store/assetsStore';
+
 const ASSET_LOGOS: Record<string, string> = {
   wbtc: "https://garden.imgix.net/token-images/wbtc.svg",
   avax: "https://garden.imgix.net/token-images/avax.svg",
@@ -14,9 +16,9 @@ const ASSET_LOGOS: Record<string, string> = {
 };
 
 const CHAIN_LOGOS: Record<string, string> = {
-  'Arbitrum Sepolia': "https://garden.imgix.net/chain_images/arbitrumSepolia.svg",
-  'Avalanche Testnet': "https://garden.imgix.net/token-images/avax.svg",
-  'Bitcoin Testnet': "https://garden.imgix.net/token-images/bitcoin.svg",
+  'arbitrum sepolia': "https://garden.imgix.net/chain_images/arbitrumSepolia.svg",
+  'avalanche testnet': "https://garden.imgix.net/token-images/avax.svg",
+  'bitcoin testnet': "https://garden.imgix.net/token-images/bitcoin.svg",
 };
 
 function getAssetLogo(symbol: string) {
@@ -75,9 +77,10 @@ const UserOrders: React.FC = () => {
     setError, 
     setStatusFilter 
   } = useOrdersStore();
-  const [filteredOrders, setFilteredOrders] = useState<UserOrder[]>([]);
+  const [filteredOrders, setFilteredOrders] = useState<(Order & {status: OrderStatus})[]>([]);
   const [isPolling, setIsPolling] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const { assets } = useAssetsStore();
 
   // Status filter options
   const statusOptions: Array<{ value: OrderStatus | 'all'; label: string; count: number }> = [
@@ -122,22 +125,8 @@ const UserOrders: React.FC = () => {
           }
 
           return {
-            id: order.create_order?.create_id || order.source_swap?.swap_id || '',
+            ... order,
             status,
-            createdAt: order.created_at || new Date().toISOString(),
-            sourceAsset: order.source_swap?.asset || '',
-            destinationAsset: order.destination_swap?.asset || '',
-            sourceAmount: order.source_swap?.amount || '0',
-            destinationAmount: order.destination_swap?.amount || '0',
-            sourceChain: order.source_swap?.chain || '',
-            destinationChain: order.destination_swap?.chain || '',
-            sourceAddress: order.source_swap?.initiator || '',
-            destinationAddress: order.destination_swap?.initiator || '',
-            sourceTxHash: order.source_swap?.initiate_tx_hash || undefined,
-            destinationTxHash: order.destination_swap?.initiate_tx_hash || undefined,
-            secretHash: order.create_order?.secret_hash || '',
-            timelock: order.source_swap?.timelock || 0,
-            order, // Keep the full order object for reference
           };
         });
         
@@ -185,22 +174,8 @@ const UserOrders: React.FC = () => {
             }
 
             return {
-              id: order.create_order?.create_id || order.source_swap?.swap_id || '',
-              status,
-              createdAt: order.created_at || new Date().toISOString(),
-              sourceAsset: order.source_swap?.asset || '',
-              destinationAsset: order.destination_swap?.asset || '',
-              sourceAmount: order.source_swap?.amount || '0',
-              destinationAmount: order.destination_swap?.amount || '0',
-              sourceChain: order.source_swap?.chain || '',
-              destinationChain: order.destination_swap?.chain || '',
-              sourceAddress: order.source_swap?.initiator || '',
-              destinationAddress: order.destination_swap?.initiator || '',
-              sourceTxHash: order.source_swap?.initiate_tx_hash || undefined,
-              destinationTxHash: order.destination_swap?.initiate_tx_hash || undefined,
-              secretHash: order.create_order?.secret_hash || '',
-              timelock: order.source_swap?.timelock || 0,
-              order, // Keep the full order object for reference
+             ...order,
+             status,
             };
           });
           
@@ -245,13 +220,13 @@ const UserOrders: React.FC = () => {
   };
 
   // Helper function to format amount
-  const formatAmount = (amount: string): string => {
-    const num = parseFloat(amount);
-    if (isNaN(num)) return '0';
-    return num.toLocaleString(undefined, { 
-      minimumFractionDigits: 2, 
-      maximumFractionDigits: 6 
-    });
+  const formatAmount = (amount: string, decimals: number) => {
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount)) return '0';
+    const formattedAmount = numAmount / Math.pow(10, decimals);
+    let str = formattedAmount.toFixed(decimals);
+    str = str.replace(/\.?0+$/, '');
+    return str;
   };
 
   // Helper function to format date
@@ -289,32 +264,34 @@ const UserOrders: React.FC = () => {
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
+    <div className="max-w-xl mx-auto p-6">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">My Orders</h1>
+        <h1 className="text-3xl font-semibold text-gray-900 mb-2">My Orders</h1>
         <p className="text-gray-600">Track your cross-chain atomic swaps</p>
       </div>
 
       {/* Status Filter */}
       <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mb-6">
-        <div className="flex flex-wrap gap-2">
-          {statusOptions.map((option) => (
-            <button
-              key={option.value}
-              onClick={() => setStatusFilter(option.value)}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
-                statusFilter === option.value
-                  ? 'bg-[#e84142] text-white shadow-lg'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              {option.label}
-              <span className="ml-2 bg-white/20 px-2 py-0.5 rounded-full text-xs">
-                {option.count}
-              </span>
-            </button>
-          ))}
+        <div className="w-full overflow-x-auto">
+          <div className="flex gap-2 justify-center min-w-max">
+            {statusOptions.map((option) => (
+              <button
+                key={option.value}
+                onClick={() => setStatusFilter(option.value)}
+                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 whitespace-nowrap ${
+                  statusFilter === option.value
+                    ? 'bg-[#e84142] text-white shadow-lg'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {option.label}
+                <span className="ml-2 bg-white/20 px-2 py-0.5 rounded-full text-xs">
+                  {option.count}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -362,16 +339,16 @@ const UserOrders: React.FC = () => {
           <div className="space-y-4">
             {filteredOrders.map((order, index) => {
               const statusInfo = getOrderStatusInfo(order.status);
-              const sourceSymbol = getAssetSymbol(order.sourceAsset);
-              const destinationSymbol = getAssetSymbol(order.destinationAsset);
-              const sourceChainName = getChainName(order.sourceAsset);
-              const destinationChainName = getChainName(order.destinationAsset);
+              const sourceSymbol = getAssetSymbol(order.source_swap.asset);
+              const destinationSymbol = getAssetSymbol(order.destination_swap.asset);
+              const sourceChainName = getChainName(order.source_swap.chain);
+              const destinationChainName = getChainName(order.destination_swap.chain);
 
               const isNonInitiated = order.status === 'created';
               
               return (
                 <motion.div
-                  key={order.id}
+                  key={order.create_order.create_id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.1 }}
@@ -380,7 +357,7 @@ const UserOrders: React.FC = () => {
                       ? 'hover:shadow-xl cursor-pointer hover:border-[#e84142]/30' 
                       : 'hover:shadow-xl'
                   }`}
-                  onClick={isNonInitiated ? () => setSelectedOrderId(order.id) : undefined}
+                  onClick={isNonInitiated ? () => setSelectedOrderId(order.create_order.create_id) : undefined}
                 >
                   {/* Order Header */}
                   <div className="flex items-center justify-between mb-4">
@@ -388,82 +365,88 @@ const UserOrders: React.FC = () => {
                       <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusInfo.color}`}>
                         {statusInfo.icon} {statusInfo.label}
                       </span>
-                      <span className="text-sm text-gray-500">#{order.id.slice(0, 8)}</span>
+                      <span className="text-sm text-gray-500">#{order.create_order.create_id.slice(0, 8)}</span>
                       {isNonInitiated && (
                         <span className="text-xs text-[#e84142] bg-[#e84142]/10 px-2 py-1 rounded-full">
                           Click to initiate
                         </span>
                       )}
                     </div>
-                    <span className="text-sm text-gray-500">{formatDate(order.createdAt)}</span>
+                    <span className="text-sm text-gray-500">{formatDate(order.created_at)}</span>
                   </div>
 
                   {/* Order Details */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Source Asset */}
                     <div className="bg-gray-50 rounded-xl p-4">
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center justify-between mb-3">
                         <span className="text-sm font-medium text-gray-700">From</span>
                         <div className="flex items-center gap-2">
                           {getAssetLogo(sourceSymbol)}
                           <span className="font-semibold">{sourceSymbol}</span>
                         </div>
                       </div>
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-col items-start justify-between">
                         <div className="flex items-center gap-2">
                           {getChainLogo(sourceChainName)}
                           <span className="text-sm text-gray-600">{sourceChainName}</span>
                         </div>
-                        <span className="font-semibold text-lg">{formatAmount(order.sourceAmount)}</span>
+                        <span className="font-semibold text-lg">{formatAmount(order.source_swap.amount, assets.find(a => a.asset.symbol === sourceSymbol)?.asset.decimals ?? 18)}</span>
                       </div>
                     </div>
 
                     {/* Destination Asset */}
                     <div className="bg-gray-50 rounded-xl p-4">
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center justify-between mb-3">
                         <span className="text-sm font-medium text-gray-700">To</span>
                         <div className="flex items-center gap-2">
                           {getAssetLogo(destinationSymbol)}
                           <span className="font-semibold">{destinationSymbol}</span>
                         </div>
                       </div>
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-col items-start justify-between">
                         <div className="flex items-center gap-2">
                           {getChainLogo(destinationChainName)}
                           <span className="text-sm text-gray-600">{destinationChainName}</span>
                         </div>
-                        <span className="font-semibold text-lg">{formatAmount(order.destinationAmount)}</span>
+                        <span className="font-semibold text-lg">{formatAmount(order.destination_swap.amount, assets.find(a => a.asset.symbol === destinationSymbol)?.asset.decimals ?? 18)}</span>
                       </div>
                     </div>
                   </div>
 
                   {/* Transaction Hashes */}
-                  {(order.sourceTxHash || order.destinationTxHash) && (
+                  {(order.source_swap.initiate_tx_hash || order.destination_swap.initiate_tx_hash) && (
                     <div className="mt-4 pt-4 border-t border-gray-100">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {order.sourceTxHash && (
+                        {order.source_swap.initiate_tx_hash && (
                           <div>
                             <span className="text-sm font-medium text-gray-700">Source TX:</span>
                             <a
-                              href={`https://explorer.avax-test.network/tx/${order.sourceTxHash}`}
+                              href={`https://explorer.avax-test.network/tx/${order.source_swap.initiate_tx_hash}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="block text-sm text-blue-600 hover:text-blue-800 truncate"
                             >
-                              {order.sourceTxHash.slice(0, 10)}...{order.sourceTxHash.slice(-8)}
+                              { order.source_swap.initiate_tx_hash ? 
+                              order.source_swap.initiate_tx_hash.slice(0, 10) + "..." + order.source_swap.initiate_tx_hash.slice(-8) :
+                              "--"
+                              }
                             </a>
                           </div>
                         )}
-                        {order.destinationTxHash && (
+                        {order.destination_swap.initiate_tx_hash && (
                           <div>
                             <span className="text-sm font-medium text-gray-700">Destination TX:</span>
                             <a
-                              href={`https://explorer.avax-test.network/tx/${order.destinationTxHash}`}
+                              href={`https://explorer.avax-test.network/tx/${order.destination_swap.initiate_tx_hash}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="block text-sm text-blue-600 hover:text-blue-800 truncate"
                             >
-                              {order.destinationTxHash.slice(0, 10)}...{order.destinationTxHash.slice(-8)}
+                              { order.destination_swap.initiate_tx_hash ? 
+                              order.destination_swap.initiate_tx_hash.slice(0, 10) + "..." + order.destination_swap.initiate_tx_hash.slice(-8) :
+                              "--"
+                              }
                             </a>
                           </div>
                         )}
@@ -481,7 +464,7 @@ const UserOrders: React.FC = () => {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            setSelectedOrderId(order.id);
+                            setSelectedOrderId(order.create_order.create_id);
                           }}
                           className="px-4 py-2 bg-[#e84142] text-white text-sm font-medium rounded-lg hover:bg-[#e84142]/90 transition-colors"
                         >
@@ -496,16 +479,6 @@ const UserOrders: React.FC = () => {
           </div>
         )}
       </AnimatePresence>
-
-      {/* Polling Indicator */}
-      {isPolling && (
-        <div className="fixed bottom-6 right-6 bg-white rounded-xl shadow-lg border border-gray-100 p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-            <span className="text-sm text-gray-600">Live updates enabled</span>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
