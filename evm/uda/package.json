@@ -1,0 +1,23 @@
+{
+  "name": "uda-watcher",
+  "version": "1.0.0",
+  "description": "UDA watcher for checking ERC20 token balances",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "watch": "tsc --watch"
+  },
+  "dependencies": {
+    "ethers": "^6.8.1",
+    "mongodb": "^6.3.0",
+    "neverthrow": "^6.0.1",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.8.0",
+    "typescript": "^5.2.2",
+    "ts-node": "^10.9.1"
+  }
+}

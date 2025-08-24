@@ -23,12 +23,12 @@ export const WATCHER_CONFIG = {
 export const chainConfig: Chain[] = [
   {
     id: 'arbitrum_sepolia',
-    startBlock: 186966790,
+    startBlock: 187026492,
     rpcUrl: process.env.ARBITRUM_SEPOLIA_RPC_URL || "https://arb-sepolia.g.alchemy.com/v2/GE3ckFWo2EhIEsrrYkc55",
     maxBlockSpan: 200,
     contracts: [
       // {
-      //   address: "0xeffc83AC0Da8EC6C91CDe640d35eFB0D10c2E112", // USDC
+      //   address: "0x419540C835D55aa023376970AbC82ce18a650f21", // USDC
       //   type: "erc20"
       // },
       {
@@ -36,7 +36,7 @@ export const chainConfig: Chain[] = [
         type: "atomic_swap"
       },
       // {
-      //   address: "0x00c1Df9bf9C7ff7F3c2A8F9e9af72DA95b350D34", // WBTC
+      //   address: "0x374158D863400c7Ab0491eA9a70c4Cf8615CEa50", // WBTC
       //   type: "erc20"
       // }
     ]
@@ -48,7 +48,7 @@ export const chainConfig: Chain[] = [
   //   maxBlockSpan: 1000,
   //   contracts: [
   //     // {
-  //     //   address: "0xeffc83AC0Da8EC6C91CDe640d35eFB0D10c2E112", // USDC
+  //     //   address: "0x419540C835D55aa023376970AbC82ce18a650f21", // USDC
   //     //   type: "erc20"
   //     // },
   //     {
@@ -56,7 +56,7 @@ export const chainConfig: Chain[] = [
   //       type: "atomic_swap"
   //     },
   //     // {
-  //     //   address: "0x00c1Df9bf9C7ff7F3c2A8F9e9af72DA95b350D34", // WBTC
+  //     //   address: "0x374158D863400c7Ab0491eA9a70c4Cf8615CEa50", // WBTC
   //     //   type: "erc20"
   //     // }
   //   ]
